@@ -1,0 +1,78 @@
+# Architecture
+
+Screen-Aware is a local-first capture and MCP bridge. The desktop companion handles the native capture UX. The backend owns VideoDB sessions, indexing, and persisted state. The MCP server reads the same state and performs VideoDB semantic search for coding agents.
+
+## System Flow
+
+```mermaid
+flowchart LR
+    UI["Tauri React Companion"] -->|"POST /api/sessions"| API["FastAPI Backend"]
+    API -->|"create CaptureSession"| VDB["VideoDB"]
+    API -->|"client_token"| UI
+    UI -->|"Tauri invoke"| RUST["Rust Capture Bridge"]
+    RUST -->|"videodb_recorder protocol"| BIN["VideoDB native capture binary"]
+    BIN -->|"screen/mic/system streams"| VDB
+    VDB -->|"websocket or webhook events"| API
+    API -->|"start_transcript, index_audio, index_visuals"| VDB
+    API -->|"state/events"| STORE[".screen-aware JSON/JSONL"]
+    AGENT["CLI Coding Agent"] -->|"MCP stdio tools"| MCP["FastMCP Server"]
+    MCP -->|"read state + semantic search"| VDB
+    MCP -->|"evidence + timestamps"| AGENT
+```
+
+## Components
+
+### Companion UI
+
+- `companion/src/App.tsx` renders the minimalist capture controller.
+- `companion/src/capture.ts` wraps Tauri commands and recorder events.
+- `companion/src/styles.css` implements the monochrome neo-brutalist visual system: sharp borders, stark paper background, no gradients, no shadows.
+
+### Rust/Tauri Capture Bridge
+
+- `companion/src-tauri/src/lib.rs` spawns the VideoDB native capture binary from `companion/node_modules/videodb/bin/capture.exe` or `VIDEODB_CAPTURE_BINARY`.
+- It sends recorder commands over stdin using the `videodb_recorder|{json}` line protocol.
+- It exposes Tauri commands for permission requests, channel listing, start, pause, resume, stop, and shutdown.
+
+### Backend API
+
+- `src/screen_aware/api.py` runs FastAPI on `127.0.0.1:8787` by default.
+- `POST /api/sessions` creates a real VideoDB CaptureSession and returns a client token to the companion.
+- `POST /webhooks/videodb` and the backend websocket listener normalize VideoDB events into local state.
+- `GET /api/status`, `GET /api/events`, and `POST /api/query` provide local control-plane inspection.
+
+### VideoDB Service
+
+- `src/screen_aware/videodb_service.py` calls `videodb.connect`, creates CaptureSessions, generates client tokens, opens VideoDB websocket listeners, starts transcripts, starts audio indexing, starts visual indexing, and searches RTStreams.
+- SDK compatibility wrappers are intentionally thin; they call the real VideoDB SDK and only adapt minor signature differences.
+
+### Local State
+
+- `.screen-aware/state.json` stores backend status, current session, RTStreams, and indexing metadata.
+- `.screen-aware/events.jsonl` stores recent lifecycle, transcript, visual, audio, and client events.
+- This folder is ignored by git because it contains local runtime state and potentially sensitive workflow context.
+
+### MCP Server
+
+- `src/screen_aware/mcp_server.py` exposes a stdio FastMCP server.
+- Tool names use the `screen_aware_` prefix so agents can discover the right tools quickly.
+- All MCP tools are read-only from the coding agent's perspective.
+
+## Session Lifecycle
+
+1. Backend starts and opens a VideoDB websocket listener.
+2. Companion requests a new session from `POST /api/sessions`.
+3. Backend creates a VideoDB CaptureSession and client token.
+4. Companion initializes the Rust capture bridge with the client token.
+5. Rust bridge asks for screen and microphone permissions, lists channel IDs, and starts recording with selected channels.
+6. VideoDB emits `capture_session.active`.
+7. Backend starts transcript, audio indexing, and visual indexing for the active RTStreams.
+8. MCP tools search the indexed RTStreams and return evidence to the CLI agent.
+
+## Security Boundaries
+
+- The VideoDB API key belongs in `.env` or the user environment, never in committed client config.
+- MCP clients should pass `SCREEN_AWARE_ENV_FILE` and `SCREEN_AWARE_DATA_DIR`, not the key itself.
+- `.screen-aware/`, `.env`, Tauri targets, and dependency folders are ignored.
+- The MCP tools are read-only and do not execute code or mutate the developer project.
+
