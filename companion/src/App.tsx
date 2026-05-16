@@ -142,7 +142,7 @@ export default function App() {
       end_user_id: "local-developer",
       issue_text: issueText || undefined,
       metadata: {
-        companion: "electron-react",
+        companion: "tauri-react",
         capture_groups: selectedGroups
       }
     });
