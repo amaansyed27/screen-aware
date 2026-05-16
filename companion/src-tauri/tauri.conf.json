@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Screen-Aware",
-        "width": 1120,
-        "height": 760,
-        "minWidth": 880,
-        "minHeight": 640,
+        "width": 460,
+        "height": 720,
+        "minWidth": 380,
+        "minHeight": 560,
         "backgroundColor": "#f4f0e8"
       }
     ],
@@ -30,4 +30,3 @@
     "icon": []
   }
 }
-
