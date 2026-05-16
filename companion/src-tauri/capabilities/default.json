@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for the Screen-Aware companion window.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:event:default"]
+}
+
