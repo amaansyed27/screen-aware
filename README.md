@@ -37,6 +37,13 @@ cd C:\Users\Amaan\Downloads\screen-aware\companion
 npm run tauri:dev
 ```
 
+The dev launcher automatically scans from port `5173` upward if another Vite instance is already running. To choose a different starting port:
+
+```powershell
+$env:SCREEN_AWARE_DEV_PORT = "5300"
+npm run tauri:dev
+```
+
 In the companion, select Screen, Mic, and optionally System, type the issue, then press Start.
 
 ## What It Builds

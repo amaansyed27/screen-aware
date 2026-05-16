@@ -47,6 +47,13 @@ cd C:\Users\Amaan\Downloads\screen-aware\companion
 npm run tauri:dev
 ```
 
+The launcher automatically cycles through available Vite ports starting at `5173` and injects the selected port into Tauri's `devUrl`. If you want a different starting point:
+
+```powershell
+$env:SCREEN_AWARE_DEV_PORT = "5300"
+npm run tauri:dev
+```
+
 Compiled no-bundle build:
 
 ```powershell
@@ -101,4 +108,3 @@ cargo fmt --check --manifest-path .\src-tauri\Cargo.toml
 cargo check --manifest-path .\src-tauri\Cargo.toml
 npm run tauri -- build --no-bundle
 ```
-
