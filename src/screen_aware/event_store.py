@@ -47,6 +47,10 @@ class EventStore:
                 "ws_status": "not_started",
                 "last_error": None,
                 "updated_at": None,
+                "mcp_status": "not_connected",
+                "mcp_agent": None,
+                "mcp_last_seen": None,
+                "mcp_tool": None,
             },
         }
 
@@ -191,4 +195,3 @@ class EventStore:
                 updates[key] = data[key]
         if updates:
             self.upsert_session(session_id, **updates)
-

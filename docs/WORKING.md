@@ -66,10 +66,10 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 2. Start the Screen-Aware backend.
 3. Open the Tauri companion.
 4. Enter the issue in the Issue field. Example: `The Flappy page is running but the canvas is blank after I press Start.`
-5. Enable Screen and Mic. Enable System if you want app audio.
-6. Press Start and grant OS permissions.
+5. Choose Full screen or Window, choose the source, and select microphone/system-sound options.
+6. Press Start sharing and grant OS permissions.
 7. Reproduce the issue while speaking or typing what you expect.
-8. Ask your CLI agent to use the Screen-Aware MCP tools.
+8. The companion shrinks into a top recorder bar. Type short notes there or keep speaking while your CLI agent uses the Screen-Aware MCP tools.
 
 ## What Happens Internally
 

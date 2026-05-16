@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import atexit
+import os
 import time
 from enum import Enum
 from typing import Any
@@ -8,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import get_settings
-from .event_store import EventStore
+from .event_store import EventStore, utc_now_iso
 from .formatters import compact_event, context_markdown, dumps
 from .videodb_service import VideoDBService
 
@@ -81,6 +83,48 @@ def _service() -> tuple[EventStore, VideoDBService]:
     return store, VideoDBService(settings, store)
 
 
+def _agent_name() -> str:
+    return (
+        os.getenv("SCREEN_AWARE_AGENT_NAME")
+        or os.getenv("MCP_CLIENT_NAME")
+        or os.getenv("TERM_PROGRAM")
+        or "MCP coding agent"
+    )
+
+
+def _mark_agent_seen(store: EventStore, tool_name: str) -> None:
+    agent = _agent_name()
+    store.update_backend(
+        mcp_status="connected",
+        mcp_agent=agent,
+        mcp_last_seen=utc_now_iso(),
+        mcp_tool=tool_name,
+    )
+    store.append_event(
+        {
+            "source": "mcp",
+            "channel": "agent",
+            "event": "mcp.tool_called",
+            "data": {
+                "agent": agent,
+                "tool": tool_name,
+                "text": f"{agent} used {tool_name}",
+            },
+        }
+    )
+
+
+def _mark_agent_offline() -> None:
+    try:
+        store, _ = _service()
+        store.update_backend(
+            mcp_status="offline",
+            mcp_stopped_at=utc_now_iso(),
+        )
+    except Exception:
+        pass
+
+
 def _build_payload(
     *,
     query: str | None,
@@ -117,6 +161,7 @@ async def screen_aware_analyze_screen_context(params: AnalyzeScreenInput) -> str
     """
 
     store, service = _service()
+    _mark_agent_seen(store, "screen_aware_analyze_screen_context")
     session = store.get_session(params.session_id)
     results, warnings = await service.search_session(
         query=params.query,
@@ -160,6 +205,7 @@ async def screen_aware_query_workflow_history(params: QueryWorkflowInput) -> str
     """
 
     store, service = _service()
+    _mark_agent_seen(store, "screen_aware_query_workflow_history")
     session = store.get_session(params.session_id)
     results, warnings = await service.search_session(
         query=params.query,
@@ -196,6 +242,7 @@ async def screen_aware_get_live_context(params: LiveContextInput) -> str:
     """Return the latest Screen-Aware events without running a semantic search."""
 
     store, _ = _service()
+    _mark_agent_seen(store, "screen_aware_get_live_context")
     state = store.read_state()
     session = store.get_session()
     events = store.recent_events(
@@ -238,6 +285,7 @@ async def screen_aware_get_capture_status(response_format: ResponseFormat = Resp
     """Return current CaptureSession, RTStream, and indexing status from local state."""
 
     store, _ = _service()
+    _mark_agent_seen(store, "screen_aware_get_capture_status")
     state = store.read_state()
     session = store.get_session()
     payload = {"backend": state.get("backend", {}), "session": session}
@@ -277,9 +325,17 @@ def recent_events_resource() -> str:
 
 
 def main() -> None:
+    store, _ = _service()
+    store.update_backend(
+        mcp_status="connected",
+        mcp_agent=_agent_name(),
+        mcp_started_at=utc_now_iso(),
+        mcp_last_seen=utc_now_iso(),
+        mcp_tool=None,
+    )
+    atexit.register(_mark_agent_offline)
     mcp.run()
 
 
 if __name__ == "__main__":
     main()
-

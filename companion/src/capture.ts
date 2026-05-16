@@ -32,6 +32,9 @@ export const tauriCapture: CaptureBridge = {
   shutdown() {
     return invoke<{ ok: boolean }>("shutdown_capture");
   },
+  setCompactWindow(compact: boolean) {
+    return invoke<{ ok: boolean }>("set_compact_window", { compact });
+  },
   onEvent(callback: (event: CompanionEvent) => void) {
     let active = true;
     let unlisten: (() => void) | null = null;
@@ -48,4 +51,3 @@ export const tauriCapture: CaptureBridge = {
     };
   }
 };
-

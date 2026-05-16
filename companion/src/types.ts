@@ -6,8 +6,9 @@ export interface PlainChannel {
   name: string;
   type: "audio" | "video";
   group: ChannelGroupName;
+  source_kind?: "screen" | "window" | "unknown";
   store: boolean;
-  isPrimary: boolean;
+  is_primary: boolean;
 }
 
 export interface CaptureBridge {
@@ -24,6 +25,7 @@ export interface CaptureBridge {
   resumeTracks(tracks: TrackName[]): Promise<{ ok: boolean }>;
   stop(): Promise<{ ok: boolean }>;
   shutdown(): Promise<{ ok: boolean }>;
+  setCompactWindow(compact: boolean): Promise<{ ok: boolean }>;
   onEvent(callback: (event: CompanionEvent) => void): () => void;
 }
 
@@ -57,6 +59,10 @@ export interface ApiStatus {
     ws_connection_id?: string;
     ws_status?: string;
     last_error?: string | null;
+    mcp_status?: string;
+    mcp_agent?: string | null;
+    mcp_last_seen?: string | null;
+    mcp_tool?: string | null;
   };
   current_session_id?: string | null;
   session?: Record<string, unknown> | null;

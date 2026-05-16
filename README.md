@@ -94,11 +94,12 @@ The safest shared environment block is:
 ```json
 {
   "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
-  "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
+  "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env",
+  "SCREEN_AWARE_AGENT_NAME": "Codex"
 }
 ```
 
-That lets MCP clients start the server without storing the VideoDB key in their config.
+That lets MCP clients start the server without storing the VideoDB key in their config. `SCREEN_AWARE_AGENT_NAME` is what the companion shows as the connected coding agent.
 
 ## Docs
 

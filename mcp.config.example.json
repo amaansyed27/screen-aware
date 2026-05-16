@@ -6,7 +6,8 @@
       "cwd": "C:\\Users\\Amaan\\Downloads\\screen-aware",
       "env": {
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
-        "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
+        "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env",
+        "SCREEN_AWARE_AGENT_NAME": "MCP coding agent"
       }
     }
   }

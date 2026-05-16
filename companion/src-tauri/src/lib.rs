@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State};
 use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -28,6 +28,8 @@ enum CaptureError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Tauri(#[from] tauri::Error),
 }
 
 impl Serialize for CaptureError {
@@ -76,12 +78,21 @@ enum ChannelGroupName {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SourceKind {
+    Screen,
+    Window,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PlainChannel {
     id: String,
     name: String,
     #[serde(rename = "type")]
     channel_type: String,
     group: ChannelGroupName,
+    source_kind: SourceKind,
     store: bool,
     is_primary: bool,
 }
@@ -445,18 +456,36 @@ fn plain_channel_from_value(value: &Value) -> PlainChannel {
         .and_then(Value::as_str)
         .unwrap_or("Unknown")
         .to_string();
-    let group = if id.starts_with("display") || channel_type == "video" {
+    let id_lower = id.to_lowercase();
+    let name_lower = name.to_lowercase();
+    let group = if id_lower.starts_with("display") || channel_type == "video" {
         ChannelGroupName::Display
-    } else if id.starts_with("system_audio") {
+    } else if id_lower.starts_with("system_audio") {
         ChannelGroupName::SystemAudio
     } else {
         ChannelGroupName::Mic
+    };
+    let source_kind = if matches!(group, ChannelGroupName::Display)
+        && (id_lower.contains("window") || name_lower.contains("window"))
+    {
+        SourceKind::Window
+    } else if matches!(group, ChannelGroupName::Display)
+        && (id_lower.contains("display")
+            || id_lower.contains("screen")
+            || name_lower.contains("display")
+            || name_lower.contains("screen")
+            || name_lower.contains("monitor"))
+    {
+        SourceKind::Screen
+    } else {
+        SourceKind::Unknown
     };
     PlainChannel {
         id,
         name,
         channel_type,
         group,
+        source_kind,
         store: true,
         is_primary: false,
     }
@@ -616,6 +645,34 @@ async fn shutdown_capture(state: State<'_, CaptureState>) -> CaptureResult<OkRes
     Ok(OkResponse { ok: true })
 }
 
+#[tauri::command]
+async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkResponse> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
+    if compact {
+        window.set_always_on_top(true)?;
+        window.set_size(Size::Logical(LogicalSize {
+            width: 940.0,
+            height: 190.0,
+        }))?;
+        if let Some(monitor) = window.current_monitor()? {
+            let monitor_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let logical_width = monitor_size.width as f64 / scale;
+            let x = ((logical_width - 940.0) / 2.0).max(24.0);
+            window.set_position(Position::Logical(LogicalPosition { x, y: 24.0 }))?;
+        }
+    } else {
+        window.set_always_on_top(false)?;
+        window.set_size(Size::Logical(LogicalSize {
+            width: 1120.0,
+            height: 760.0,
+        }))?;
+    }
+    Ok(OkResponse { ok: true })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(CaptureState::default())
@@ -627,7 +684,8 @@ pub fn run() {
             pause_tracks,
             resume_tracks,
             stop_capture,
-            shutdown_capture
+            shutdown_capture,
+            set_compact_window
         ])
         .setup(|app| {
             let _ = app.path().app_data_dir();

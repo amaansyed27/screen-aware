@@ -1,24 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  AudioLines,
-  Circle,
+  Check,
+  ChevronDown,
   Loader2,
   Mic,
+  MicOff,
+  Monitor,
   MonitorUp,
   Pause,
   Play,
   RefreshCw,
+  Send,
   Square,
-  Terminal
+  Volume2,
+  VolumeX
 } from "lucide-react";
-import {
-  createSession,
-  getEvents,
-  getStatus,
-  liveUrl,
-  postClientEvent
-} from "./api";
+import { createSession, getEvents, getStatus, liveUrl, postClientEvent } from "./api";
 import { tauriCapture } from "./capture";
 import type {
   ApiStatus,
@@ -30,27 +28,51 @@ import type {
   TrackName
 } from "./types";
 
+type ShareMode = "screen" | "window";
+
 const GROUP_LABELS: Record<ChannelGroupName, string> = {
   mic: "Mic",
   display: "Screen",
-  system_audio: "System"
+  system_audio: "System sound"
 };
 
 function groupTrack(group: ChannelGroupName): TrackName {
-  if (group === "display") {
-    return "screen";
-  }
-  return group;
+  return group === "display" ? "screen" : group;
 }
 
-function shortToken(token: string | null): string {
-  if (!token) {
-    return "not issued";
+function eventTime(value?: string): string {
+  if (!value) {
+    return "--:--";
   }
-  if (token.length <= 12) {
-    return token;
+  return value.includes("T") ? value.slice(11, 16) : value.slice(0, 5);
+}
+
+function isRecent(value?: string | null): boolean {
+  if (!value) {
+    return false;
   }
-  return `${token.slice(0, 6)}...${token.slice(-6)}`;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return Date.now() - parsed < 120_000;
+}
+
+function friendlyChannel(channel: PlainChannel): string {
+  if (channel.name && channel.name !== "Unknown") {
+    return channel.name;
+  }
+  return channel.id;
+}
+
+function sourceMatches(channel: PlainChannel, mode: ShareMode): boolean {
+  if (channel.source_kind === mode) {
+    return true;
+  }
+  if (!channel.source_kind || channel.source_kind === "unknown") {
+    return mode === "screen";
+  }
+  return false;
 }
 
 export default function App() {
@@ -59,15 +81,17 @@ export default function App() {
   const [channels, setChannels] = useState<PlainChannel[]>([]);
   const [handshake, setHandshake] = useState<SessionHandshake | null>(null);
   const [issueText, setIssueText] = useState("");
+  const [noteText, setNoteText] = useState("");
+  const [shareMode, setShareMode] = useState<ShareMode>("screen");
+  const [selectedDisplayId, setSelectedDisplayId] = useState("");
+  const [selectedMicId, setSelectedMicId] = useState("");
+  const [micEnabled, setMicEnabled] = useState(true);
+  const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
+  const [storeCapture, setStoreCapture] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [loadingSources, setLoadingSources] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
-  const [storeCapture, setStoreCapture] = useState(true);
-  const [selectedGroups, setSelectedGroups] = useState<Record<ChannelGroupName, boolean>>({
-    mic: true,
-    display: true,
-    system_audio: false
-  });
   const [pausedTracks, setPausedTracks] = useState<Record<TrackName, boolean>>({
     mic: false,
     screen: false,
@@ -86,14 +110,42 @@ export default function App() {
     );
   }, [channels]);
 
+  const displayChoices = useMemo(() => {
+    const matching = groupedChannels.display.filter(channel => sourceMatches(channel, shareMode));
+    return matching.length ? matching : groupedChannels.display;
+  }, [groupedChannels.display, shareMode]);
+
+  const selectedDisplay =
+    displayChoices.find(channel => channel.id === selectedDisplayId) ?? displayChoices[0] ?? null;
+  const selectedMic =
+    groupedChannels.mic.find(channel => channel.id === selectedMicId) ??
+    groupedChannels.mic[0] ??
+    null;
+
+  const agentLastSeen = status?.backend?.mcp_last_seen ?? null;
+  const agentConnected = status?.backend?.mcp_status === "connected" && isRecent(agentLastSeen);
+  const agentLabel = status?.backend?.mcp_agent ?? "MCP agent";
+  const agentState = agentConnected ? "Connected" : agentLastSeen ? "Idle" : "Waiting";
+  const backendReady = status?.backend?.ws_status === "connected";
+
+  const recentSignal = events
+    .slice(-5)
+    .reverse()
+    .filter(event => event.text || event.channel || event.event);
+
   async function refresh() {
-    const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(50)]);
+    const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(40)]);
     setStatus(nextStatus);
     setEvents(nextEvents.events);
   }
 
   useEffect(() => {
     void refresh().catch((reason: unknown) => setError(String(reason)));
+    const timer = window.setInterval(() => {
+      void getStatus()
+        .then(setStatus)
+        .catch(() => undefined);
+    }, 4000);
 
     const ws = new WebSocket(liveUrl());
     ws.addEventListener("message", message => {
@@ -132,26 +184,46 @@ export default function App() {
     });
 
     return () => {
+      window.clearInterval(timer);
       ws.close();
       unsubscribe?.();
     };
   }, [currentSessionId]);
 
+  useEffect(() => {
+    if (selectedDisplayId && displayChoices.some(channel => channel.id === selectedDisplayId)) {
+      return;
+    }
+    setSelectedDisplayId(displayChoices[0]?.id ?? "");
+  }, [displayChoices, selectedDisplayId]);
+
+  useEffect(() => {
+    if (selectedMicId && groupedChannels.mic.some(channel => channel.id === selectedMicId)) {
+      return;
+    }
+    setSelectedMicId(groupedChannels.mic[0]?.id ?? "");
+  }, [groupedChannels.mic, selectedMicId]);
+
   async function prepareSession(): Promise<SessionHandshake> {
+    if (handshake) {
+      return handshake;
+    }
     const result = await createSession({
       end_user_id: "local-developer",
       issue_text: issueText || undefined,
       metadata: {
         companion: "tauri-react",
-        capture_groups: selectedGroups
+        share_mode: shareMode,
+        mic_enabled: micEnabled,
+        system_audio_enabled: systemAudioEnabled
       }
     });
     setHandshake(result);
     return result;
   }
 
-  async function startCapture() {
-    setBusy(true);
+  async function loadSources(): Promise<{ session: SessionHandshake; available: PlainChannel[] }> {
+    setLoadingSources(true);
     setError(null);
     try {
       const session = await prepareSession();
@@ -159,30 +231,64 @@ export default function App() {
         clientToken: session.client_token,
         apiUrl: session.videodb_api_url
       });
-
-      if (selectedGroups.mic || selectedGroups.system_audio) {
+      await tauriCapture.requestPermission("screen-capture");
+      if (micEnabled || systemAudioEnabled) {
         await tauriCapture.requestPermission("microphone");
       }
-      if (selectedGroups.display) {
-        await tauriCapture.requestPermission("screen-capture");
-      }
-
       const available = await tauriCapture.listChannels();
       setChannels(available);
+      return { session, available };
+    } finally {
+      setLoadingSources(false);
+    }
+  }
 
-      const selected = available.filter(channel => selectedGroups[channel.group]);
-      const primaryDisplay = selected.find(channel => channel.group === "display");
+  async function startCapture() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { session, available } = await loadSources();
+
+      const displays = available.filter(channel => channel.group === "display");
+      const matchingDisplays = displays.filter(channel => sourceMatches(channel, shareMode));
+      const display =
+        matchingDisplays.find(channel => channel.id === selectedDisplayId) ??
+        displays.find(channel => channel.id === selectedDisplayId) ??
+        matchingDisplays[0] ??
+        displays[0];
+      if (!display) {
+        throw new Error("No screen or window source is available. Choose source and grant access.");
+      }
+
+      const selectedIds = [display.id];
+      const mic = available.find(channel => channel.id === selectedMicId) ?? selectedMic;
+      const system = available.find(channel => channel.group === "system_audio");
+      if (micEnabled && mic) {
+        selectedIds.push(mic.id);
+      }
+      if (systemAudioEnabled && system) {
+        selectedIds.push(system.id);
+      }
+
       await tauriCapture.start({
         sessionId: session.session_id,
-        channelIds: selected.map(channel => channel.id),
-        primaryVideoChannelId: primaryDisplay?.id,
+        channelIds: selectedIds,
+        primaryVideoChannelId: display.id,
         store: storeCapture
       });
       setCapturing(true);
+      await tauriCapture.setCompactWindow(true).catch(() => undefined);
       await postClientEvent({
         session_id: session.session_id,
         event: "capture.started",
-        data: { channel_ids: selected.map(channel => channel.id), store: storeCapture }
+        data: {
+          channel_ids: selectedIds,
+          share_mode: shareMode,
+          display: display.name,
+          mic: micEnabled ? mic?.name : null,
+          system_audio: systemAudioEnabled,
+          store: storeCapture
+        }
       });
       await refresh();
     } catch (reason) {
@@ -205,6 +311,7 @@ export default function App() {
         });
       }
       setCapturing(false);
+      await tauriCapture.setCompactWindow(false).catch(() => undefined);
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -228,190 +335,263 @@ export default function App() {
     }
   }
 
-  const recentSignal = events
-    .slice(-8)
-    .reverse()
-    .filter(event => event.text || event.channel || event.event);
+  async function submitNote(event: FormEvent) {
+    event.preventDefault();
+    const text = noteText.trim();
+    if (!text || !currentSessionId) {
+      return;
+    }
+    setNoteText("");
+    await postClientEvent({
+      session_id: currentSessionId,
+      event: "user.note",
+      data: { text }
+    });
+    await refresh();
+  }
+
+  if (capturing) {
+    return (
+      <main className="compact-shell">
+        <section className="recorder-bar" aria-label="Active Screen-Aware capture">
+          <div className="recording-lockup">
+            <span className="record-dot" />
+            <div>
+              <strong>Sharing</strong>
+              <span>{selectedDisplay ? friendlyChannel(selectedDisplay) : "workspace"}</span>
+            </div>
+          </div>
+
+          <div className="agent-chip" data-state={agentConnected ? "connected" : "waiting"}>
+            <span>{agentLabel}</span>
+            <strong>{agentState}</strong>
+          </div>
+
+          <div className="compact-controls">
+            <button
+              className="icon-button"
+              title="Pause or resume screen"
+              onClick={() => void toggleTrack("display")}
+            >
+              {pausedTracks.screen ? <Play size={17} /> : <Monitor size={17} />}
+            </button>
+            <button
+              className="icon-button"
+              title="Pause or resume microphone"
+              onClick={() => void toggleTrack("mic")}
+              disabled={!micEnabled}
+            >
+              {pausedTracks.mic || !micEnabled ? <MicOff size={17} /> : <Mic size={17} />}
+            </button>
+            <button
+              className="icon-button"
+              title="Pause or resume system sound"
+              onClick={() => void toggleTrack("system_audio")}
+              disabled={!systemAudioEnabled}
+            >
+              {pausedTracks.system_audio || !systemAudioEnabled ? (
+                <VolumeX size={17} />
+              ) : (
+                <Volume2 size={17} />
+              )}
+            </button>
+          </div>
+
+          <form className="note-form" onSubmit={event => void submitNote(event)}>
+            <input
+              value={noteText}
+              onChange={event => setNoteText(event.target.value)}
+              placeholder="Tell the agent what to look at..."
+              aria-label="Describe the issue for the connected agent"
+            />
+            <button className="icon-button dark" type="submit" disabled={!noteText.trim()}>
+              <Send size={16} />
+            </button>
+          </form>
+
+          <button className="stop-button" onClick={() => void stopCapture()} disabled={busy}>
+            <Square size={16} />
+            Stop
+          </button>
+        </section>
+
+        {error && (
+          <div className="compact-error">
+            <AlertTriangle size={16} />
+            <span>{error}</span>
+          </div>
+        )}
+      </main>
+    );
+  }
 
   return (
-    <main className="shell">
-      <header className="topbar">
+    <main className="setup-shell">
+      <header className="simple-header">
         <div>
           <div className="eyebrow">MCP + VideoDB</div>
-          <h1>Screen-Aware</h1>
+          <h1>Share with your coding agent</h1>
         </div>
-        <div className="status-strip" aria-label="Runtime status">
-          <span className={status?.backend?.ws_status === "connected" ? "dot dot-on" : "dot"} />
-          <span>{status?.backend?.ws_status ?? "offline"}</span>
-          <code>{status?.backend?.ws_connection_id ?? "no-ws"}</code>
+        <div className="agent-status" data-state={agentConnected ? "connected" : "waiting"}>
+          <span>{agentLabel}</span>
+          <strong>{agentState}</strong>
         </div>
       </header>
 
-      <section className="grid">
-        <div className="panel control-panel">
-          <div className="panel-title">
-            <Terminal size={18} />
-            <span>Control</span>
+      <section className="setup-grid">
+        <div className="share-panel">
+          <div className="section-heading">
+            <MonitorUp size={18} />
+            <span>Workspace source</span>
           </div>
 
-          <label className="field">
-            <span>Issue</span>
-            <textarea
-              value={issueText}
-              onChange={event => setIssueText(event.target.value)}
-              placeholder="Paste or type the bug context."
-              rows={5}
-              disabled={capturing}
-            />
-          </label>
+          <div className="source-mode" aria-label="Share source type">
+            <button
+              className={shareMode === "screen" ? "selected" : ""}
+              onClick={() => setShareMode("screen")}
+              type="button"
+            >
+              Full screen
+            </button>
+            <button
+              className={shareMode === "window" ? "selected" : ""}
+              onClick={() => setShareMode("window")}
+              type="button"
+            >
+              Window
+            </button>
+          </div>
 
-          <div className="toggles" aria-label="Capture toggles">
-            <label className="toggle">
+          <div className="selector-row">
+            <label>
+              <span>Source</span>
+              <div className="select-wrap">
+                <select
+                  value={selectedDisplayId}
+                  onChange={event => setSelectedDisplayId(event.target.value)}
+                >
+                  {displayChoices.length ? (
+                    displayChoices.map(channel => (
+                      <option key={channel.id} value={channel.id}>
+                        {friendlyChannel(channel)}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Choose source to list screens and windows</option>
+                  )}
+                </select>
+                <ChevronDown size={16} />
+              </div>
+            </label>
+            <button onClick={() => void loadSources()} disabled={loadingSources || busy}>
+              {loadingSources ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
+              Choose source
+            </button>
+          </div>
+
+          <div className="audio-row">
+            <label className="switch-line">
               <input
                 type="checkbox"
-                checked={selectedGroups.display}
-                disabled={capturing}
-                onChange={event =>
-                  setSelectedGroups(previous => ({ ...previous, display: event.target.checked }))
-                }
+                checked={micEnabled}
+                onChange={event => setMicEnabled(event.target.checked)}
               />
-              <MonitorUp size={18} />
-              <span>Screen</span>
+              <span>Microphone</span>
             </label>
-            <label className="toggle">
+
+            <label className="switch-line">
               <input
                 type="checkbox"
-                checked={selectedGroups.mic}
-                disabled={capturing}
-                onChange={event =>
-                  setSelectedGroups(previous => ({ ...previous, mic: event.target.checked }))
-                }
+                checked={systemAudioEnabled}
+                onChange={event => setSystemAudioEnabled(event.target.checked)}
               />
-              <Mic size={18} />
-              <span>Mic</span>
+              <span>System sound</span>
             </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={selectedGroups.system_audio}
-                disabled={capturing}
-                onChange={event =>
-                  setSelectedGroups(previous => ({
-                    ...previous,
-                    system_audio: event.target.checked
-                  }))
-                }
-              />
-              <AudioLines size={18} />
-              <span>System</span>
-            </label>
-            <label className="toggle">
+
+            <label className="switch-line muted-line">
               <input
                 type="checkbox"
                 checked={storeCapture}
-                disabled={capturing}
                 onChange={event => setStoreCapture(event.target.checked)}
               />
-              <Circle size={18} />
-              <span>Store</span>
+              <span>Save searchable context</span>
             </label>
           </div>
 
-          <div className="button-row">
-            <button className="primary" onClick={() => void startCapture()} disabled={busy || capturing}>
-              {busy && !capturing ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
-              <span>Start</span>
-            </button>
-            <button onClick={() => void stopCapture()} disabled={busy || !capturing}>
-              <Square size={18} />
-              <span>Stop</span>
-            </button>
-            <button onClick={() => void refresh()} disabled={busy}>
-              <RefreshCw size={18} />
-              <span>Refresh</span>
-            </button>
-          </div>
-
-          {capturing && (
-            <div className="button-row compact">
-              {(["display", "mic", "system_audio"] as ChannelGroupName[]).map(group => (
-                <button key={group} onClick={() => void toggleTrack(group)}>
-                  {pausedTracks[groupTrack(group)] ? <Play size={16} /> : <Pause size={16} />}
-                  <span>{GROUP_LABELS[group]}</span>
-                </button>
-              ))}
-            </div>
+          {micEnabled && (
+            <label className="mic-select">
+              <span>Mic input</span>
+              <div className="select-wrap">
+                <select value={selectedMicId} onChange={event => setSelectedMicId(event.target.value)}>
+                  {groupedChannels.mic.length ? (
+                    groupedChannels.mic.map(channel => (
+                      <option key={channel.id} value={channel.id}>
+                        {friendlyChannel(channel)}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Default microphone</option>
+                  )}
+                </select>
+                <ChevronDown size={16} />
+              </div>
+            </label>
           )}
 
+          <label className="issue-box">
+            <span>What should the agent understand?</span>
+            <textarea
+              value={issueText}
+              onChange={event => setIssueText(event.target.value)}
+              placeholder="Example: The Flappy page starts, but the canvas is blank after pressing Start."
+              rows={4}
+            />
+          </label>
+
           {error && (
-            <div className="warning">
+            <div className="error-line">
               <AlertTriangle size={16} />
               <span>{error}</span>
             </div>
           )}
+
+          <button className="start-share" onClick={() => void startCapture()} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
+            Start sharing
+          </button>
         </div>
 
-        <div className="panel session-panel">
-          <div className="panel-title">
-            <MonitorUp size={18} />
-            <span>Session</span>
+        <aside className="context-panel">
+          <div className="context-row">
+            <span>Backend</span>
+            <strong>{backendReady ? "Ready" : status?.backend?.ws_status ?? "Offline"}</strong>
           </div>
-          <dl className="kv">
-            <div>
-              <dt>ID</dt>
-              <dd>{currentSessionId ?? "none"}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{String(status?.session?.status ?? "idle")}</dd>
-            </div>
-            <div>
-              <dt>Client</dt>
-              <dd>{String(status?.session?.client_status ?? (capturing ? "capturing" : "idle"))}</dd>
-            </div>
-            <div>
-              <dt>Token</dt>
-              <dd>{shortToken(handshake?.client_token ?? null)}</dd>
-            </div>
-          </dl>
+          <div className="context-row">
+            <span>Agent</span>
+            <strong>{agentState}</strong>
+          </div>
+          <div className="context-row">
+            <span>Last tool</span>
+            <strong>{status?.backend?.mcp_tool ?? "None"}</strong>
+          </div>
 
-          <div className="channel-list">
-            {(["display", "mic", "system_audio"] as ChannelGroupName[]).map(group => (
-              <div className="channel-group" key={group}>
-                <div className="channel-heading">{GROUP_LABELS[group]}</div>
-                {groupedChannels[group].length ? (
-                  groupedChannels[group].map(channel => (
-                    <code key={channel.id}>{channel.id}</code>
-                  ))
-                ) : (
-                  <span className="muted">not listed</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="panel live-panel">
-          <div className="panel-title">
-            <AudioLines size={18} />
-            <span>Live Context</span>
-          </div>
-          <div className="event-list">
+          <div className="recent-feed">
+            <div className="feed-title">Recent signal</div>
             {recentSignal.length ? (
               recentSignal.map((event, index) => (
-                <article className="event-row" key={`${event.ts}-${index}`}>
-                  <div className="event-meta">
-                    <span>{event.channel ?? event.event ?? "event"}</span>
-                    <time>{event.ts?.slice(11, 19) ?? "--:--:--"}</time>
-                  </div>
-                  <p>{event.text ?? JSON.stringify(event.data ?? {})}</p>
+                <article key={`${event.ts}-${index}`}>
+                  <time>{eventTime(event.ts)}</time>
+                  <p>{event.text ?? event.channel ?? event.event}</p>
                 </article>
               ))
             ) : (
-              <div className="empty">No signal yet.</div>
+              <div className="quiet-empty">
+                <Check size={16} />
+                <span>No shared context yet</span>
+              </div>
             )}
           </div>
-        </div>
+        </aside>
       </section>
     </main>
   );

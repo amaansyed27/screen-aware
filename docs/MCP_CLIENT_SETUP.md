@@ -17,6 +17,8 @@ ENV = C:\Users\Amaan\Downloads\screen-aware\.env
 
 Keep the VideoDB key in `ENV`, not in MCP config files.
 
+Set `SCREEN_AWARE_AGENT_NAME` per client if you want the companion to show a friendly connected-agent name such as `Codex`, `Claude Code`, `Gemini CLI`, `Antigravity`, `OpenCode`, `VS Code Copilot`, or `Cline`.
+
 ## OpenAI Codex
 
 CLI install:
@@ -97,7 +99,8 @@ Open Antigravity Agent pane, use the menu, open MCP Servers, Manage MCP Servers,
       "cwd": "C:\\Users\\Amaan\\Downloads\\screen-aware",
       "env": {
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
-        "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
+        "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env",
+        "SCREEN_AWARE_AGENT_NAME": "Your agent"
       }
     }
   }
@@ -221,4 +224,3 @@ Use the Screen-Aware MCP tools before changing code. First call screen_aware_get
 - OpenCode MCP: https://dev.opencode.ai/docs/mcp-servers/
 - VS Code MCP config: https://code.visualstudio.com/docs/copilot/reference/mcp-configuration
 - Cline MCP: https://docs.cline.bot/mcp/adding-mcp-servers-from-github
-
