@@ -270,6 +270,7 @@ input:focus-visible {
 .picker-row:has(.picker-menu) {
   z-index: 5;
   align-items: start;
+  gap: 10px 14px;
 }
 
 .picker-value {
@@ -304,7 +305,7 @@ input:focus-visible {
 .picker-menu {
   grid-column: 1 / -1;
   position: static;
-  max-height: 212px;
+  max-height: 184px;
   display: grid;
   gap: 6px;
   overflow-y: auto;
@@ -315,6 +316,13 @@ input:focus-visible {
   margin-top: 2px;
   scrollbar-width: thin;
   scrollbar-color: #c9c5bd transparent;
+}
+
+.picker-menu.empty {
+  max-height: none;
+  padding: 8px 10px;
+  border-color: transparent;
+  background: #fffdfa;
 }
 
 .picker-option {
@@ -359,7 +367,7 @@ input:focus-visible {
 }
 
 .picker-empty {
-  padding: 12px;
+  padding: 4px 2px;
 }
 
 .small-toggle {

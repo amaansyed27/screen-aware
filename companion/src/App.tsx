@@ -588,7 +588,7 @@ export default function App() {
             <ChevronDown size={18} />
           </button>
           {openMenu === "source" && (
-            <div className="picker-menu" role="menu">
+            <div className={displayChoices.length ? "picker-menu" : "picker-menu empty"} role="menu">
               {displayChoices.length ? (
                 displayChoices.map(channel => (
                   <button
@@ -639,7 +639,7 @@ export default function App() {
             {micEnabled ? "On" : "Off"}
           </button>
           {openMenu === "mic" && micEnabled && (
-            <div className="picker-menu" role="menu">
+            <div className={groupedChannels.mic.length ? "picker-menu" : "picker-menu empty"} role="menu">
               {groupedChannels.mic.length ? (
                 groupedChannels.mic.map(channel => (
                   <button

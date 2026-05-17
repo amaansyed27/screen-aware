@@ -15,7 +15,7 @@ export default defineConfig({
       "/screen-aware-api": {
         target: "http://127.0.0.1:8787",
         changeOrigin: true,
-        rewrite: path => path.replace(/^\/screen-aware-api/, "/api")
+        rewrite: path => path.replace(/^\/screen-aware-api/, "")
       },
       "/screen-aware-live": {
         target: "ws://127.0.0.1:8787",
