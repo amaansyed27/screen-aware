@@ -35,6 +35,11 @@ import type {
 type ShareMode = "screen" | "window";
 type MenuName = "source" | "mic" | null;
 
+interface NativeSourceSelection {
+  label: string;
+  displaySurface?: string;
+}
+
 function groupTrack(group: ChannelGroupName): TrackName {
   return group === "display" ? "screen" : group;
 }
@@ -198,6 +203,7 @@ export default function App() {
   const [capturing, setCapturing] = useState(false);
   const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
+  const [nativeSource, setNativeSource] = useState<NativeSourceSelection | null>(null);
   const [pausedTracks, setPausedTracks] = useState<Record<TrackName, boolean>>({
     mic: false,
     screen: false,
@@ -218,6 +224,9 @@ export default function App() {
 
   const displayChoices = useMemo(() => {
     const shareableDisplays = groupedChannels.display.filter(channel => !isCameraLike(channel));
+    if (shareMode === "window") {
+      return shareableDisplays.filter(channel => sourceMatches(channel, "window"));
+    }
     const matching = shareableDisplays.filter(channel => sourceMatches(channel, shareMode));
     return matching.length ? matching : shareableDisplays;
   }, [groupedChannels.display, shareMode]);
@@ -247,7 +256,14 @@ export default function App() {
       : "Pick the app window to share."
     : shareMode === "screen"
       ? "Click Choose source to list available screens."
-      : "Click Choose source to list available windows. If none appear, open the target app window and refresh.";
+      : "Use the native picker to choose a window, like a video call.";
+  const sourceLabel =
+    shareMode === "window"
+      ? nativeSource?.label ?? "Choose window"
+      : loadingSources
+        ? "Looking for sources..."
+        : friendlyChannel(selectedDisplay);
+  const windowCaptureBlocked = shareMode === "window";
 
   async function refresh() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
@@ -424,7 +440,40 @@ export default function App() {
     }
   }
 
+  async function pickNativeSource() {
+    setError(null);
+    setOpenMenu(null);
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setError("Native window picker is not available in this WebView. Use Full screen capture.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          displaySurface: "window"
+        },
+        audio: false
+      });
+      const [track] = stream.getVideoTracks();
+      const settings = track?.getSettings?.() ?? {};
+      const label = track?.label?.trim() || "Selected window";
+      setNativeSource({
+        label,
+        displaySurface: typeof settings.displaySurface === "string" ? settings.displaySurface : undefined
+      });
+      stream.getTracks().forEach(item => item.stop());
+      setError("Window selected with the native picker. VideoDB capture SDK currently streams display channels only; use Full screen to stream to VideoDB.");
+    } catch (reason) {
+      setNativeSource(null);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
   async function openSourcePicker() {
+    if (shareMode === "window") {
+      await pickNativeSource();
+      return;
+    }
     if (displayChoices.length) {
       setOpenMenu(openMenu === "source" ? null : "source");
       return;
@@ -444,6 +493,11 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
+      if (shareMode === "window") {
+        throw new Error(
+          "Window-specific streaming is not exposed by the installed VideoDB capture SDK. Use Full screen to stream to VideoDB, or keep Window mode only as a native picker preview."
+        );
+      }
       const { session, available } = await loadSources();
       const displays = available.filter(channel => channel.group === "display" && !isCameraLike(channel));
       const matchingDisplays = displays.filter(channel => sourceMatches(channel, shareMode));
@@ -701,14 +755,20 @@ export default function App() {
         <div className="mode-switch" aria-label="Capture mode">
           <button
             className={shareMode === "screen" ? "selected" : ""}
-            onClick={() => setShareMode("screen")}
+            onClick={() => {
+              setShareMode("screen");
+              setOpenMenu(null);
+            }}
             type="button"
           >
             Full screen
           </button>
           <button
             className={shareMode === "window" ? "selected" : ""}
-            onClick={() => setShareMode("window")}
+            onClick={() => {
+              setShareMode("window");
+              setOpenMenu(null);
+            }}
             type="button"
           >
             Window
@@ -726,7 +786,7 @@ export default function App() {
               type="button"
               onClick={() => void openSourcePicker()}
             >
-              {loadingSources ? "Looking for sources..." : friendlyChannel(selectedDisplay)}
+              {sourceLabel}
             </button>
           </div>
           <button
@@ -763,7 +823,7 @@ export default function App() {
 
         {channels.length > 0 && shareMode === "window" && !hasModeSpecificDisplay && (
           <div className="inline-note">
-            Window-specific channels were not returned by the capture SDK. Select the closest source above or use full-screen capture.
+            Native window picking is available, but the installed VideoDB capture SDK exposes display channels only. Use Full screen to stream into VideoDB.
           </div>
         )}
 
@@ -827,9 +887,13 @@ export default function App() {
           </button>
         </div>
 
-        <button className="secondary-action" onClick={() => void handleLoadSources("source")} disabled={loadingSources || busy}>
+        <button
+          className="secondary-action"
+          onClick={() => void (shareMode === "window" ? pickNativeSource() : handleLoadSources("source"))}
+          disabled={loadingSources || busy}
+        >
           {loadingSources ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
-          {displayChoices.length ? "Refresh sources" : "Choose source"}
+          {shareMode === "window" ? "Choose window" : displayChoices.length ? "Refresh sources" : "Choose source"}
         </button>
 
         <label className="save-context">
@@ -848,9 +912,9 @@ export default function App() {
           </div>
         )}
 
-        <button className="start-recording" onClick={() => void startCapture()} disabled={busy}>
+        <button className="start-recording" onClick={() => void startCapture()} disabled={busy || windowCaptureBlocked}>
           {busy ? <Loader2 className="spin" size={20} /> : <Play size={20} />}
-          Start sharing
+          {shareMode === "window" ? "Use full screen to share" : "Start sharing"}
         </button>
 
         <footer className="card-status">
