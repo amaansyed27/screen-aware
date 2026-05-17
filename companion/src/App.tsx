@@ -50,6 +50,16 @@ function friendlyChannel(channel?: PlainChannel | null): string {
   return channel.id;
 }
 
+function sourceKindLabel(channel: PlainChannel): string {
+  if (channel.source_kind === "window") {
+    return "Window";
+  }
+  if (channel.source_kind === "screen") {
+    return "Full screen";
+  }
+  return "Source";
+}
+
 function sourceMatches(channel: PlainChannel, mode: ShareMode): boolean {
   if (channel.source_kind === mode) {
     return true;
@@ -99,6 +109,9 @@ export default function App() {
     const matching = groupedChannels.display.filter(channel => sourceMatches(channel, shareMode));
     return matching.length ? matching : groupedChannels.display;
   }, [groupedChannels.display, shareMode]);
+  const hasModeSpecificDisplay = groupedChannels.display.some(channel =>
+    sourceMatches(channel, shareMode)
+  );
 
   const selectedDisplay =
     displayChoices.find(channel => channel.id === selectedDisplayId) ?? displayChoices[0] ?? null;
@@ -116,6 +129,13 @@ export default function App() {
   const agentLabel = status?.backend?.mcp_agent ?? "MCP agent";
   const agentState = agentConnected ? "connected" : agentLastSeen ? "idle" : "waiting";
   const backendReady = status?.backend?.ws_status === "connected";
+  const sourceHelp = displayChoices.length
+    ? shareMode === "screen"
+      ? "Pick the monitor to share."
+      : "Pick the app window to share."
+    : shareMode === "screen"
+      ? "Click Choose source to list available screens."
+      : "Click Choose source to list available windows. If none appear, open the target app window and refresh.";
 
   async function refresh() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
@@ -424,6 +444,8 @@ export default function App() {
           </button>
         </div>
 
+        <div className="source-help">{sourceHelp}</div>
+
         <label className="recorder-row">
           <Monitor size={24} />
           <div>
@@ -442,6 +464,28 @@ export default function App() {
           </div>
           <ChevronDown size={18} />
         </label>
+
+        {displayChoices.length > 0 && (
+          <div className="source-list" aria-label="Available share targets">
+            {displayChoices.map(channel => (
+              <button
+                key={channel.id}
+                className={channel.id === selectedDisplayId ? "source-option selected" : "source-option"}
+                type="button"
+                onClick={() => setSelectedDisplayId(channel.id)}
+              >
+                <span>{sourceKindLabel(channel)}</span>
+                <strong>{friendlyChannel(channel)}</strong>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {channels.length > 0 && shareMode === "window" && !hasModeSpecificDisplay && (
+          <div className="inline-note">
+            Window-specific channels were not returned by the capture SDK. Select the closest source above or use full-screen capture.
+          </div>
+        )}
 
         <label className="recorder-row">
           {micEnabled ? <Mic size={24} /> : <MicOff size={24} />}

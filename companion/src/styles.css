@@ -138,6 +138,12 @@ input:focus-visible {
   color: #fffdfa;
 }
 
+.source-help {
+  color: #5d5a54;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .recorder-row {
   min-height: 74px;
   display: grid;
@@ -148,6 +154,42 @@ input:focus-visible {
   border-radius: 24px;
   background: #f2f0ed;
   padding: 12px 14px;
+}
+
+.source-list {
+  display: grid;
+  gap: 8px;
+}
+
+.source-option {
+  min-height: 54px;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  border: 2px solid transparent;
+  border-radius: 20px;
+  background: #f2f0ed;
+  padding: 10px 14px;
+  text-align: left;
+}
+
+.source-option span {
+  color: #5d5a54;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.source-option strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.source-option.selected {
+  border-color: #121212;
+  background: #fffdfa;
 }
 
 .recorder-row > div {
@@ -241,6 +283,7 @@ select:disabled {
 }
 
 .inline-error,
+.inline-note,
 .floating-error {
   display: flex;
   align-items: center;
@@ -250,6 +293,11 @@ select:disabled {
   background: #fff4ef;
   padding: 10px 12px;
   font-size: 13px;
+}
+
+.inline-note {
+  background: #f8f5ee;
+  line-height: 1.35;
 }
 
 .start-recording {
