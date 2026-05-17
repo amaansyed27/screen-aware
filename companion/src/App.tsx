@@ -724,7 +724,9 @@ export default function App() {
       <section className="recorder-card" aria-label="Screen-Aware recorder">
         <header className="card-top" onMouseDown={event => void beginWindowDrag(event)}>
           <div className="app-mark">
-            <img className="app-logo" src="/logo.svg" alt="" aria-hidden="true" />
+            <span className="app-logo-shell" aria-hidden="true">
+              <img className="app-logo" src="/logo-192.png" alt="" />
+            </span>
             <div>
               <strong>Screen-Aware</strong>
               <small>{shareSubtitle}</small>
