@@ -46,6 +46,7 @@ npm run tauri:dev
 
 In the companion, choose Full screen or Window, choose Mic and optionally System sound, then press Start.
 Window capture uses the native OS picker and uploads searchable segments to VideoDB.
+During sharing, use the Pointer, Pen, and Highlighter controls in the floating toolbar to mark the screen. Annotation actions are recorded as live context for MCP agents.
 
 ## What It Builds
 

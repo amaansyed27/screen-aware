@@ -7,7 +7,9 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State};
+use tauri::{
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Position, Size, State, WebviewWindow,
+};
 use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -43,6 +45,33 @@ impl Serialize for CaptureError {
 
 type CaptureResult<T> = Result<T, CaptureError>;
 type PendingSender = oneshot::Sender<Result<Value, String>>;
+
+fn compact_dimensions(collapsed: bool) -> (f64, f64) {
+    if collapsed {
+        (360.0, 94.0)
+    } else {
+        (940.0, 190.0)
+    }
+}
+
+fn apply_compact_geometry(window: &WebviewWindow, collapsed: bool) -> CaptureResult<()> {
+    let (target_width, target_height) = compact_dimensions(collapsed);
+    let mut width = target_width;
+    let mut x = 24.0;
+    if let Some(monitor) = window.current_monitor()? {
+        let monitor_size = monitor.size();
+        let scale = monitor.scale_factor();
+        let logical_width = monitor_size.width as f64 / scale;
+        width = target_width.min((logical_width - 48.0).max(320.0));
+        x = ((logical_width - width) / 2.0).max(24.0);
+    }
+    window.set_size(Size::Logical(LogicalSize {
+        width,
+        height: target_height,
+    }))?;
+    window.set_position(Position::Logical(LogicalPosition { x, y: 24.0 }))?;
+    Ok(())
+}
 
 #[derive(Default)]
 struct CaptureState {
@@ -652,17 +681,7 @@ async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkRe
         .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
     if compact {
         window.set_always_on_top(true)?;
-        window.set_size(Size::Logical(LogicalSize {
-            width: 940.0,
-            height: 190.0,
-        }))?;
-        if let Some(monitor) = window.current_monitor()? {
-            let monitor_size = monitor.size();
-            let scale = monitor.scale_factor();
-            let logical_width = monitor_size.width as f64 / scale;
-            let x = ((logical_width - 940.0) / 2.0).max(24.0);
-            window.set_position(Position::Logical(LogicalPosition { x, y: 24.0 }))?;
-        }
+        apply_compact_geometry(&window, false)?;
     } else {
         window.set_always_on_top(false)?;
         window.set_size(Size::Logical(LogicalSize {
@@ -679,12 +698,34 @@ async fn set_overlay_collapsed(app: AppHandle, collapsed: bool) -> CaptureResult
         .get_webview_window("main")
         .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
     window.set_always_on_top(true)?;
-    let (width, height) = if collapsed {
-        (360.0, 94.0)
+    apply_compact_geometry(&window, collapsed)?;
+    Ok(OkResponse { ok: true })
+}
+
+#[tauri::command]
+async fn set_annotation_window(
+    app: AppHandle,
+    enabled: bool,
+    collapsed: bool,
+) -> CaptureResult<OkResponse> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
+    window.set_always_on_top(true)?;
+    if enabled {
+        if let Some(monitor) = window.current_monitor()? {
+            window.set_position(Position::Physical(*monitor.position()))?;
+            window.set_size(Size::Physical(*monitor.size()))?;
+        } else {
+            window.set_position(Position::Logical(LogicalPosition { x: 0.0, y: 0.0 }))?;
+            window.set_size(Size::Logical(LogicalSize {
+                width: 1280.0,
+                height: 720.0,
+            }))?;
+        }
     } else {
-        (940.0, 190.0)
-    };
-    window.set_size(Size::Logical(LogicalSize { width, height }))?;
+        apply_compact_geometry(&window, collapsed)?;
+    }
     Ok(OkResponse { ok: true })
 }
 
@@ -728,6 +769,7 @@ pub fn run() {
             shutdown_capture,
             set_compact_window,
             set_overlay_collapsed,
+            set_annotation_window,
             window_control,
             window_start_dragging
         ])

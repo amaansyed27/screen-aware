@@ -71,6 +71,7 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 6. Press Start sharing and grant OS permissions.
 7. Reproduce the issue while speaking or typing what you expect.
 8. The companion shrinks into a top recorder bar. Type short notes there or keep speaking while your CLI agent uses the Screen-Aware MCP tools.
+9. Use Pointer, Pen, or Highlighter from the bar when you need to point at a visible UI problem. Annotation mode expands to a transparent full-screen overlay and returns to the compact bar when the tool is turned off.
 
 ## What Happens Internally
 
@@ -80,8 +81,9 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 4. Full screen mode lists capture channels and starts recording selected channel IDs.
 5. Window mode uses the native WebView window picker, records WebM segments locally, and uploads each segment to VideoDB.
 6. VideoDB emits lifecycle events for RTStreams, while the backend records uploaded window segment events.
-7. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
-8. The MCP server searches those indexes when an agent calls a tool.
+7. Pointer and annotation actions are posted as local client events with normalized screen coordinates.
+8. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
+9. The MCP server searches those indexes and recent annotation events when an agent calls a tool.
 
 ## Stop Capture
 

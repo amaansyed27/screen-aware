@@ -1,19 +1,30 @@
-import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   AlertCircle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Highlighter,
   Loader2,
   Mic,
   MicOff,
   Minus,
   Monitor,
-  Pause,
+  MousePointer2,
+  PencilLine,
   Play,
   RefreshCw,
   Send,
   Square,
+  Trash2,
   X,
   Volume2,
   VolumeX
@@ -40,7 +51,9 @@ import type {
 
 type ShareMode = "screen" | "window";
 type MenuName = "source" | "mic" | null;
+type AnnotationTool = "none" | "pointer" | "pen" | "highlighter";
 const WINDOW_SEGMENT_MS = 10_000;
+const ANNOTATION_VIEWBOX = 1000;
 
 interface NativeSourceSelection {
   label: string;
@@ -57,6 +70,17 @@ interface WindowCaptureRuntime {
   stopped: boolean;
   sequence: number;
   loop: Promise<void> | null;
+}
+
+interface AnnotationPoint {
+  x: number;
+  y: number;
+}
+
+interface AnnotationStroke {
+  id: string;
+  tool: Exclude<AnnotationTool, "none" | "pointer">;
+  points: AnnotationPoint[];
 }
 
 function groupTrack(group: ChannelGroupName): TrackName {
@@ -216,6 +240,25 @@ function firstSupportedMimeType(): string | undefined {
   return candidates.find(candidate => MediaRecorder.isTypeSupported(candidate));
 }
 
+function strokePath(points: AnnotationPoint[]): string {
+  return points.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+}
+
+function strokeBounds(points: AnnotationPoint[]) {
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  return {
+    min_x: Math.min(...xs),
+    min_y: Math.min(...ys),
+    max_x: Math.max(...xs),
+    max_y: Math.max(...ys)
+  };
+}
+
+function clampAnnotationPoint(value: number): number {
+  return Math.max(0, Math.min(ANNOTATION_VIEWBOX, value));
+}
+
 export default function App() {
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [events, setEvents] = useState<ScreenAwareEvent[]>([]);
@@ -236,6 +279,10 @@ export default function App() {
   const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [nativeSource, setNativeSource] = useState<NativeSourceSelection | null>(null);
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>("none");
+  const [annotationPointer, setAnnotationPointer] = useState<AnnotationPoint | null>(null);
+  const [annotationStrokes, setAnnotationStrokes] = useState<AnnotationStroke[]>([]);
+  const [activeStroke, setActiveStroke] = useState<AnnotationStroke | null>(null);
   const [pausedTracks, setPausedTracks] = useState<Record<TrackName, boolean>>({
     mic: false,
     screen: false,
@@ -243,6 +290,7 @@ export default function App() {
   });
   const selectedWindowStreamRef = useRef<MediaStream | null>(null);
   const windowCaptureRef = useRef<WindowCaptureRuntime | null>(null);
+  const annotationLayerRef = useRef<SVGSVGElement | null>(null);
 
   const currentSessionId = handshake?.session_id ?? status?.current_session_id ?? null;
 
@@ -297,6 +345,7 @@ export default function App() {
       : loadingSources
         ? "Looking for sources..."
         : friendlyChannel(selectedDisplay);
+  const annotating = annotationTool !== "none";
 
   async function refresh() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
@@ -795,6 +844,10 @@ export default function App() {
       }
       setCapturing(false);
       setOverlayCollapsed(false);
+      setAnnotationTool("none");
+      setAnnotationPointer(null);
+      setActiveStroke(null);
+      setAnnotationStrokes([]);
       await tauriCapture.setCompactWindow(false).catch(() => undefined);
       await refresh();
     } catch (reason) {
@@ -853,8 +906,125 @@ export default function App() {
   }
 
   async function setCollapsed(nextCollapsed: boolean) {
+    if (nextCollapsed && annotating) {
+      setAnnotationTool("none");
+      setActiveStroke(null);
+      setAnnotationPointer(null);
+      await invoke("set_annotation_window", { enabled: false, collapsed: nextCollapsed });
+    } else {
+      await invoke("set_overlay_collapsed", { collapsed: nextCollapsed });
+    }
     setOverlayCollapsed(nextCollapsed);
-    await invoke("set_overlay_collapsed", { collapsed: nextCollapsed });
+  }
+
+  async function setAnnotationMode(tool: AnnotationTool) {
+    const nextTool = annotationTool === tool ? "none" : tool;
+    setAnnotationTool(nextTool);
+    setActiveStroke(null);
+    if (nextTool === "none") {
+      setAnnotationPointer(null);
+      await invoke("set_annotation_window", { enabled: false, collapsed: overlayCollapsed });
+      return;
+    }
+    setOverlayCollapsed(false);
+    await invoke("set_annotation_window", { enabled: true, collapsed: false });
+  }
+
+  function annotationPointFromEvent(event: ReactPointerEvent<SVGSVGElement>): AnnotationPoint {
+    const rect = annotationLayerRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return { x: 0, y: 0 };
+    }
+    return {
+      x: clampAnnotationPoint(((event.clientX - rect.left) / rect.width) * ANNOTATION_VIEWBOX),
+      y: clampAnnotationPoint(((event.clientY - rect.top) / rect.height) * ANNOTATION_VIEWBOX)
+    };
+  }
+
+  function postAnnotationClientEvent(event: string, data: Record<string, unknown>) {
+    if (!currentSessionId) {
+      return;
+    }
+    void postClientEvent({
+      session_id: currentSessionId,
+      event,
+      data
+    }).catch(reason => {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
+  }
+
+  function handleAnnotationPointerDown(event: ReactPointerEvent<SVGSVGElement>) {
+    if (annotationTool === "none") {
+      return;
+    }
+    const point = annotationPointFromEvent(event);
+    setAnnotationPointer(point);
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    if (annotationTool === "pointer") {
+      postAnnotationClientEvent("annotation.pointer", {
+        x: point.x,
+        y: point.y,
+        normalized: true,
+        text: `User pointed at screen position ${Math.round(point.x)}, ${Math.round(point.y)}.`
+      });
+      return;
+    }
+
+    const stroke: AnnotationStroke = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      tool: annotationTool,
+      points: [point]
+    };
+    setActiveStroke(stroke);
+  }
+
+  function handleAnnotationPointerMove(event: ReactPointerEvent<SVGSVGElement>) {
+    if (annotationTool === "none") {
+      return;
+    }
+    const point = annotationPointFromEvent(event);
+    setAnnotationPointer(point);
+    if (annotationTool === "pointer") {
+      return;
+    }
+    setActiveStroke(previous =>
+      previous
+        ? {
+            ...previous,
+            points: [...previous.points, point]
+          }
+        : previous
+    );
+  }
+
+  function finishAnnotationStroke() {
+    if (!activeStroke) {
+      return;
+    }
+    const stroke = activeStroke;
+    setActiveStroke(null);
+    if (stroke.points.length < 2) {
+      return;
+    }
+    setAnnotationStrokes(previous => [...previous, stroke]);
+    postAnnotationClientEvent("annotation.stroke", {
+      tool: stroke.tool,
+      point_count: stroke.points.length,
+      bounds: strokeBounds(stroke.points),
+      normalized: true,
+      text: `User marked the screen with ${stroke.tool}.`
+    });
+  }
+
+  function clearAnnotations() {
+    setAnnotationStrokes([]);
+    setActiveStroke(null);
+    setAnnotationPointer(null);
+    postAnnotationClientEvent("annotation.clear", {
+      text: "User cleared screen annotations."
+    });
   }
 
   function selectSource(channelId: string) {
@@ -880,7 +1050,44 @@ export default function App() {
 
   if (capturing) {
     return (
-      <main className="floating-mode">
+      <main className={annotating ? "floating-mode annotating" : "floating-mode"}>
+        {annotating && (
+          <svg
+            ref={annotationLayerRef}
+            className="annotation-layer"
+            data-tool={annotationTool}
+            viewBox={`0 0 ${ANNOTATION_VIEWBOX} ${ANNOTATION_VIEWBOX}`}
+            preserveAspectRatio="none"
+            onPointerDown={handleAnnotationPointerDown}
+            onPointerMove={handleAnnotationPointerMove}
+            onPointerUp={finishAnnotationStroke}
+            onPointerCancel={finishAnnotationStroke}
+          >
+            {annotationStrokes.map(stroke => (
+              <polyline
+                key={stroke.id}
+                className={`annotation-stroke ${stroke.tool}`}
+                points={strokePath(stroke.points)}
+              />
+            ))}
+            {activeStroke && (
+              <polyline
+                className={`annotation-stroke active ${activeStroke.tool}`}
+                points={strokePath(activeStroke.points)}
+              />
+            )}
+            {annotationTool === "pointer" && annotationPointer && (
+              <g
+                className="annotation-pointer"
+                transform={`translate(${annotationPointer.x} ${annotationPointer.y})`}
+              >
+                <circle r="30" />
+                <circle r="7" />
+                <path d="M0 -54 L0 -36 M0 36 L0 54 M-54 0 L-36 0 M36 0 L54 0" />
+              </g>
+            )}
+          </svg>
+        )}
         <section
           className={overlayCollapsed ? "floating-toolbar collapsed" : "floating-toolbar"}
           aria-label="Active Screen-Aware capture"
@@ -914,6 +1121,45 @@ export default function App() {
                   ) : (
                     <Volume2 size={18} />
                   )}
+                </button>
+              </div>
+
+              <div className="annotation-controls" data-no-drag="true">
+                <button
+                  className={annotationTool === "pointer" ? "active" : ""}
+                  type="button"
+                  title="Pointer"
+                  aria-label="Pointer"
+                  onClick={() => void setAnnotationMode("pointer")}
+                >
+                  <MousePointer2 size={18} />
+                </button>
+                <button
+                  className={annotationTool === "pen" ? "active" : ""}
+                  type="button"
+                  title="Pen"
+                  aria-label="Pen"
+                  onClick={() => void setAnnotationMode("pen")}
+                >
+                  <PencilLine size={18} />
+                </button>
+                <button
+                  className={annotationTool === "highlighter" ? "active" : ""}
+                  type="button"
+                  title="Highlighter"
+                  aria-label="Highlighter"
+                  onClick={() => void setAnnotationMode("highlighter")}
+                >
+                  <Highlighter size={18} />
+                </button>
+                <button
+                  type="button"
+                  title="Clear annotations"
+                  aria-label="Clear annotations"
+                  onClick={clearAnnotations}
+                  disabled={!annotationStrokes.length && !activeStroke && !annotationPointer}
+                >
+                  <Trash2 size={18} />
                 </button>
               </div>
 
