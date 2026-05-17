@@ -69,8 +69,8 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 5. Choose Full screen or Window, choose the source, and select microphone/system-sound options.
    Window mode opens the native OS picker, the same style of picker used by video-call apps.
 6. Press Start sharing and grant OS permissions.
-7. Reproduce the issue while speaking. Type explanations or follow-up requests in Codex or your connected MCP agent chat, not in the Screen-Aware overlay.
-8. The companion shrinks into a top recorder bar with capture controls only. Keep speaking while your CLI agent uses the Screen-Aware MCP tools.
+7. Reproduce the issue while speaking, or click the note button in the top bar to send a short typed context note if mic is off.
+8. The companion shrinks into a top recorder bar with capture, annotation, and typed-note controls. The note is stored for MCP context; it does not create a second AI chat.
 9. Use Pointer, Pen, or Highlighter from the bar when you need to point at a visible UI problem. Annotation mode expands to a transparent full-screen overlay and returns to the compact bar when the tool is turned off.
 
 ## What Happens Internally
@@ -82,8 +82,9 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 5. Window mode uses the native WebView window picker, records WebM segments locally, and uploads each segment to VideoDB.
 6. VideoDB emits lifecycle events for RTStreams, while the backend records uploaded window segment events.
 7. Pointer and annotation actions are posted as local client events with normalized screen coordinates.
-8. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
-9. The MCP server searches those indexes and recent annotation events when an agent calls a tool.
+8. Typed overlay notes are posted as `user.note` client events so MCP tools can read them during a live watch.
+9. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
+10. The MCP server searches those indexes and recent annotation/note events when an agent calls a tool.
 
 ## Stop Capture
 

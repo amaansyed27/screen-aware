@@ -1,4 +1,5 @@
 import {
+  FormEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   useEffect,
@@ -13,6 +14,7 @@ import {
   ChevronRight,
   Highlighter,
   Loader2,
+  MessageSquareText,
   Mic,
   MicOff,
   Minus,
@@ -21,6 +23,7 @@ import {
   PencilLine,
   Play,
   RefreshCw,
+  Send,
   Square,
   Trash2,
   X,
@@ -262,6 +265,8 @@ export default function App() {
   const [events, setEvents] = useState<ScreenAwareEvent[]>([]);
   const [channels, setChannels] = useState<PlainChannel[]>([]);
   const [handshake, setHandshake] = useState<SessionHandshake | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
   const [shareMode, setShareMode] = useState<ShareMode>("screen");
   const [selectedDisplayId, setSelectedDisplayId] = useState("");
   const [selectedMicId, setSelectedMicId] = useState("");
@@ -845,6 +850,8 @@ export default function App() {
       setAnnotationPointer(null);
       setActiveStroke(null);
       setAnnotationStrokes([]);
+      setNoteOpen(false);
+      setNoteText("");
       await tauriCapture.setCompactWindow(false).catch(() => undefined);
       await refresh();
     } catch (reason) {
@@ -883,11 +890,36 @@ export default function App() {
     }
   }
 
+  async function submitContextNote(event: FormEvent) {
+    event.preventDefault();
+    const text = noteText.trim();
+    if (!text || !currentSessionId) {
+      return;
+    }
+    try {
+      await postClientEvent({
+        session_id: currentSessionId,
+        event: "user.note",
+        data: {
+          text,
+          source: "overlay_note"
+        }
+      });
+      setNoteText("");
+      setNoteOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
   async function windowControl(action: "minimize" | "close") {
     await invoke("window_control", { action });
   }
 
   async function setCollapsed(nextCollapsed: boolean) {
+    if (nextCollapsed) {
+      setNoteOpen(false);
+    }
     if (nextCollapsed && annotating) {
       setAnnotationTool("none");
       setActiveStroke(null);
@@ -901,6 +933,7 @@ export default function App() {
 
   async function setAnnotationMode(tool: AnnotationTool) {
     const nextTool = annotationTool === tool ? "none" : tool;
+    setNoteOpen(false);
     setAnnotationTool(nextTool);
     setActiveStroke(null);
     if (nextTool === "none") {
@@ -1143,6 +1176,15 @@ export default function App() {
                 >
                   <Trash2 size={18} />
                 </button>
+                <button
+                  className={noteOpen ? "active" : ""}
+                  type="button"
+                  title="Add typed note for Codex"
+                  aria-label="Add typed note for Codex"
+                  onClick={() => setNoteOpen(value => !value)}
+                >
+                  <MessageSquareText size={18} />
+                </button>
               </div>
 
             </>
@@ -1163,6 +1205,24 @@ export default function App() {
               <Square size={16} />
             </button>
           </div>
+          {!overlayCollapsed && noteOpen && (
+            <form
+              className="context-note-popover"
+              data-no-drag="true"
+              onSubmit={event => void submitContextNote(event)}
+            >
+              <input
+                autoFocus
+                value={noteText}
+                onChange={event => setNoteText(event.target.value)}
+                placeholder="Note to Codex: what is broken?"
+                aria-label="Note to Codex"
+              />
+              <button type="submit" disabled={!noteText.trim()} title="Save note for Codex">
+                <Send size={16} />
+              </button>
+            </form>
+          )}
         </section>
         {error && (
           <div className="floating-error">
