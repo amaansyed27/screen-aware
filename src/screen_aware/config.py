@@ -65,11 +65,28 @@ class Settings(BaseSettings):
     visual_frame_count: int = Field(default=3, alias="SCREEN_AWARE_VISUAL_FRAME_COUNT")
     audio_batch_words: int = Field(default=50, alias="SCREEN_AWARE_AUDIO_BATCH_WORDS")
     max_recent_events: int = Field(default=200, alias="SCREEN_AWARE_MAX_RECENT_EVENTS")
+    live_ai_api_key: str | None = Field(default=None, alias="SCREEN_AWARE_LIVE_API_KEY")
+    live_ai_base_url: str = Field(
+        default="https://api.openai.com/v1", alias="SCREEN_AWARE_LIVE_BASE_URL"
+    )
+    live_ai_model: str = Field(default="gpt-4.1-mini", alias="SCREEN_AWARE_LIVE_MODEL")
+    live_ai_timeout_seconds: float = Field(default=20.0, alias="SCREEN_AWARE_LIVE_TIMEOUT_SECONDS")
+    live_ai_context_timeout_seconds: float = Field(
+        default=4.0, alias="SCREEN_AWARE_LIVE_CONTEXT_TIMEOUT_SECONDS"
+    )
+    live_ai_max_context_events: int = Field(
+        default=14, alias="SCREEN_AWARE_LIVE_MAX_CONTEXT_EVENTS"
+    )
 
     @field_validator("video_db_api_key", mode="before")
     @classmethod
     def accept_node_sdk_env_name(cls, value: str | None) -> str | None:
         return value or os.getenv("VIDEODB_API_KEY")
+
+    @field_validator("live_ai_api_key", mode="before")
+    @classmethod
+    def accept_openai_env_name(cls, value: str | None) -> str | None:
+        return value or os.getenv("OPENAI_API_KEY")
 
     @field_validator("screen_aware_data_dir")
     @classmethod

@@ -13,6 +13,20 @@ notepad .env
 
 Set `VIDEO_DB_API_KEY` in `.env`. Do not commit `.env`.
 
+For true live overlay replies, set a model key as well:
+
+```powershell
+notepad .env
+```
+
+Use either `SCREEN_AWARE_LIVE_API_KEY` or `OPENAI_API_KEY`. The default live model
+settings use an OpenAI-compatible `/chat/completions` endpoint:
+
+```env
+SCREEN_AWARE_LIVE_BASE_URL=https://api.openai.com/v1
+SCREEN_AWARE_LIVE_MODEL=gpt-4.1-mini
+```
+
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion
 npm install
@@ -70,8 +84,9 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
    Window mode opens the native OS picker, the same style of picker used by video-call apps.
 6. Press Start sharing and grant OS permissions.
 7. Reproduce the issue while speaking or typing what you expect.
-8. The companion shrinks into a top recorder bar. Type short notes there or keep speaking while your CLI agent uses the Screen-Aware MCP tools.
+8. The companion shrinks into a top recorder bar. Type in the live box for an immediate Screen-Aware reply in the overlay. If the WebView supports speech recognition, press the live mic button and speak a short question.
 9. Use Pointer, Pen, or Highlighter from the bar when you need to point at a visible UI problem. Annotation mode expands to a transparent full-screen overlay and returns to the compact bar when the tool is turned off.
+10. Ask Codex or another MCP client to use Screen-Aware when you want it to inspect the stored live messages, visual/audio context, and annotations before editing code.
 
 ## What Happens Internally
 
@@ -82,8 +97,9 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 5. Window mode uses the native WebView window picker, records WebM segments locally, and uploads each segment to VideoDB.
 6. VideoDB emits lifecycle events for RTStreams, while the backend records uploaded window segment events.
 7. Pointer and annotation actions are posted as local client events with normalized screen coordinates.
-8. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
-9. The MCP server searches those indexes and recent annotation events when an agent calls a tool.
+8. Live overlay messages call `POST /api/live/messages`; the backend searches recent VideoDB/context events, calls the configured live model, pushes the reply through `/api/live`, and stores the exchange.
+9. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
+10. The MCP server searches those indexes, live chat messages, and recent annotation events when an agent calls a tool.
 
 ## Stop Capture
 
@@ -93,6 +109,8 @@ Press Stop in the companion. The backend keeps the local session state and event
 
 - Backend says key missing: make sure `.env` exists and contains `VIDEO_DB_API_KEY`.
 - MCP client says key missing: pass `SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env`.
+- Overlay says live replies need a model key: add `SCREEN_AWARE_LIVE_API_KEY` or `OPENAI_API_KEY` to `.env`, then restart `screen-aware-api`.
+- Live mic button is disabled: your current WebView does not expose speech recognition. Type in the overlay; VideoDB still indexes microphone audio for MCP search.
 - MCP client sees no events: start the backend and companion first, then run `screen_aware_get_capture_status`.
 - Tauri cannot find capture binary: run `npm install` inside `companion/` or set `VIDEODB_CAPTURE_BINARY`.
 - VS Code/Cline launched before setting a user environment variable: restart the editor.

@@ -16,6 +16,9 @@ notepad .env
 ```
 
 Set `VIDEO_DB_API_KEY` in `.env`.
+For real-time replies inside the floating overlay, also set `SCREEN_AWARE_LIVE_API_KEY`
+or `OPENAI_API_KEY`. The live reply path uses an OpenAI-compatible `/chat/completions`
+endpoint configured by `SCREEN_AWARE_LIVE_BASE_URL` and `SCREEN_AWARE_LIVE_MODEL`.
 
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion
@@ -47,6 +50,7 @@ npm run tauri:dev
 In the companion, choose Full screen or Window, choose Mic and optionally System sound, then press Start.
 Window capture uses the native OS picker and uploads searchable segments to VideoDB.
 During sharing, use the Pointer, Pen, and Highlighter controls in the floating toolbar to mark the screen. Annotation actions are recorded as live context for MCP agents.
+Type in the floating live box, or use the live mic button when your WebView supports speech recognition, to get immediate overlay replies. Those replies are also stored as context for MCP agents.
 
 ## What It Builds
 
@@ -57,6 +61,7 @@ screen-aware/
     config.py           environment and .env settings
     event_store.py      shared JSON/JSONL state under .screen-aware/
     formatters.py       API and MCP response formatting
+    live_assistant.py   live overlay replies through an OpenAI-compatible model API
     mcp_server.py       FastMCP stdio server
     videodb_service.py  VideoDB CaptureSession, RTStream indexing, search
   companion/

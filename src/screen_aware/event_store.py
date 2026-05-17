@@ -143,14 +143,14 @@ class EventStore:
         session = state.get("sessions", {}).get(target)
         return session if isinstance(session, dict) else None
 
-    def record_client_event(self, session_id: str, event: dict[str, Any]) -> None:
+    def record_client_event(self, session_id: str, event: dict[str, Any]) -> dict[str, Any]:
         enriched = {
             "source": "companion",
             "capture_session_id": session_id,
             "event": event.get("event") or event.get("type") or "companion.event",
             "data": event.get("data", event),
         }
-        self.append_event(enriched)
+        normalized = self.append_event(enriched)
         with self._lock:
             state = self.read_state()
             session = state.setdefault("sessions", {}).setdefault(
@@ -161,6 +161,7 @@ class EventStore:
             del events[:-50]
             session["updated_at"] = utc_now_iso()
             self._write_state_unlocked(state)
+        return normalized
 
     def append_event(self, event: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(event)

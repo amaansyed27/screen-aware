@@ -1,4 +1,4 @@
-import type { ApiStatus, ScreenAwareEvent, SessionHandshake } from "./types";
+import type { ApiStatus, LiveReply, ScreenAwareEvent, SessionHandshake } from "./types";
 
 const DEV_API_BASE = "/screen-aware-api";
 const PROD_API_BASE = "http://127.0.0.1:8787";
@@ -48,6 +48,21 @@ export function postClientEvent(input: {
   return request<{ ok: boolean }>("/api/capture/client-event", {
     method: "POST",
     body: JSON.stringify(input)
+  });
+}
+
+export function postLiveMessage(input: {
+  sessionId: string;
+  message: string;
+  source: "typed" | "speech";
+}): Promise<LiveReply> {
+  return request<LiveReply>("/api/live/messages", {
+    method: "POST",
+    body: JSON.stringify({
+      session_id: input.sessionId,
+      message: input.message,
+      source: input.source
+    })
   });
 }
 

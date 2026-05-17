@@ -36,6 +36,7 @@ import {
   getStatus,
   liveUrl,
   postClientEvent,
+  postLiveMessage,
   postWindowCaptureSegment
 } from "./api";
 import { tauriCapture } from "./capture";
@@ -81,6 +82,48 @@ interface AnnotationStroke {
   id: string;
   tool: Exclude<AnnotationTool, "none" | "pointer">;
   points: AnnotationPoint[];
+}
+
+interface LiveChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  ts?: string;
+  pending?: boolean;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0?: {
+    transcript?: string;
+  };
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: SpeechRecognitionResultLike;
+  };
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  }
 }
 
 function groupTrack(group: ChannelGroupName): TrackName {
@@ -226,6 +269,34 @@ function channelsFromEvents(events: ScreenAwareEvent[]): PlainChannel[] {
   return [];
 }
 
+function textFromEventData(data: unknown): string {
+  if (!data || typeof data !== "object") {
+    return "";
+  }
+  const value = (data as Record<string, unknown>).text;
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function liveMessageFromEvent(event: ScreenAwareEvent): LiveChatMessage | null {
+  if (event.event !== "user.live_message" && event.event !== "assistant.live_reply") {
+    return null;
+  }
+  const text = event.text?.trim() || textFromEventData(event.data);
+  if (!text) {
+    return null;
+  }
+  return {
+    id: `${event.event}-${event.ts ?? ""}-${text}`,
+    role: event.event === "assistant.live_reply" ? "assistant" : "user",
+    text,
+    ts: event.ts
+  };
+}
+
+function liveMessagesFromEvents(events: ScreenAwareEvent[]): LiveChatMessage[] {
+  return events.map(liveMessageFromEvent).filter((message): message is LiveChatMessage => Boolean(message));
+}
+
 function isCameraLike(channel: PlainChannel): boolean {
   const value = `${channel.id} ${channel.name}`.toLowerCase();
   return value.includes("camera") || value.includes("webcam");
@@ -265,6 +336,10 @@ export default function App() {
   const [channels, setChannels] = useState<PlainChannel[]>([]);
   const [handshake, setHandshake] = useState<SessionHandshake | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [liveMessages, setLiveMessages] = useState<LiveChatMessage[]>([]);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [speechAvailable, setSpeechAvailable] = useState(false);
   const [shareMode, setShareMode] = useState<ShareMode>("screen");
   const [selectedDisplayId, setSelectedDisplayId] = useState("");
   const [selectedMicId, setSelectedMicId] = useState("");
@@ -291,6 +366,8 @@ export default function App() {
   const selectedWindowStreamRef = useRef<MediaStream | null>(null);
   const windowCaptureRef = useRef<WindowCaptureRuntime | null>(null);
   const annotationLayerRef = useRef<SVGSVGElement | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceListeningRef = useRef(false);
 
   const currentSessionId = handshake?.session_id ?? status?.current_session_id ?? null;
 
@@ -347,10 +424,43 @@ export default function App() {
         : friendlyChannel(selectedDisplay);
   const annotating = annotationTool !== "none";
 
+  function upsertLiveMessage(message: LiveChatMessage) {
+    setLiveMessages(previous => {
+      if (previous.some(item => item.id === message.id)) {
+        return previous.map(item => (item.id === message.id ? { ...item, ...message } : item));
+      }
+      const pendingIndex = previous.findIndex(
+        item => item.pending && item.role === message.role && item.text === message.text
+      );
+      if (pendingIndex >= 0) {
+        const next = [...previous];
+        next[pendingIndex] = message;
+        return next;
+      }
+      return [...previous.slice(-7), message];
+    });
+  }
+
+  function syncLiveMessagesFromEvents(nextEvents: ScreenAwareEvent[]) {
+    const messages = liveMessagesFromEvents(nextEvents);
+    if (messages.length) {
+      setLiveMessages(previous => {
+        const merged = [...previous];
+        for (const message of messages) {
+          if (!merged.some(item => item.id === message.id)) {
+            merged.push(message);
+          }
+        }
+        return merged.slice(-8);
+      });
+    }
+  }
+
   async function refresh() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
     setStatus(nextStatus);
     setEvents(nextEvents.events);
+    syncLiveMessagesFromEvents(nextEvents.events);
     setBackendOnline(true);
   }
 
@@ -394,9 +504,20 @@ export default function App() {
       }
       if (payload.type === "events") {
         setEvents(payload.events);
+        syncLiveMessagesFromEvents(payload.events);
       }
       if (payload.type === "videodb_event") {
         setEvents(previous => [...previous.slice(-39), payload.event]);
+        const message = liveMessageFromEvent(payload.event);
+        if (message) {
+          upsertLiveMessage(message);
+        }
+      }
+      if (payload.type === "assistant_reply") {
+        const message = liveMessageFromEvent(payload.message);
+        if (message) {
+          upsertLiveMessage(message);
+        }
       }
     });
     ws.addEventListener("error", () => {
@@ -466,7 +587,13 @@ export default function App() {
   }, [groupedChannels.mic, selectedMicId]);
 
   useEffect(() => {
+    setSpeechAvailable(Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
+  }, []);
+
+  useEffect(() => {
     return () => {
+      voiceListeningRef.current = false;
+      speechRecognitionRef.current?.abort();
       const runtime = windowCaptureRef.current;
       if (runtime) {
         runtime.stopped = true;
@@ -848,6 +975,9 @@ export default function App() {
       setAnnotationPointer(null);
       setActiveStroke(null);
       setAnnotationStrokes([]);
+      voiceListeningRef.current = false;
+      speechRecognitionRef.current?.stop();
+      setVoiceListening(false);
       await tauriCapture.setCompactWindow(false).catch(() => undefined);
       await refresh();
     } catch (reason) {
@@ -886,6 +1016,42 @@ export default function App() {
     }
   }
 
+  async function sendLiveMessage(text: string, source: "typed" | "speech") {
+    const clean = text.trim();
+    if (!clean || !currentSessionId) {
+      return;
+    }
+    const localId = `local-${source}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    upsertLiveMessage({
+      id: localId,
+      role: "user",
+      text: clean,
+      pending: true
+    });
+    setLiveBusy(true);
+    try {
+      const result = await postLiveMessage({
+        sessionId: currentSessionId,
+        message: clean,
+        source
+      });
+      const reply = liveMessageFromEvent(result.reply);
+      if (reply) {
+        upsertLiveMessage(reply);
+      }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      upsertLiveMessage({
+        id: `local-assistant-error-${Date.now()}`,
+        role: "assistant",
+        text: `Live reply failed: ${message}`
+      });
+    } finally {
+      setLiveBusy(false);
+    }
+  }
+
   async function submitNote(event: FormEvent) {
     event.preventDefault();
     const text = noteText.trim();
@@ -893,12 +1059,82 @@ export default function App() {
       return;
     }
     setNoteText("");
-    await postClientEvent({
-      session_id: currentSessionId,
-      event: "user.note",
-      data: { text }
-    });
-    await refresh();
+    await sendLiveMessage(text, "typed");
+  }
+
+  function stopVoiceInput() {
+    voiceListeningRef.current = false;
+    speechRecognitionRef.current?.stop();
+    setVoiceListening(false);
+  }
+
+  function startVoiceInput() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setError("Live speech recognition is not available in this WebView. Type in the live box.");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognition.onresult = event => {
+      let interim = "";
+      let finalText = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result?.[0]?.transcript?.trim();
+        if (!transcript) {
+          continue;
+        }
+        if (result.isFinal) {
+          finalText = `${finalText} ${transcript}`.trim();
+        } else {
+          interim = `${interim} ${transcript}`.trim();
+        }
+      }
+      if (interim) {
+        setNoteText(interim);
+      }
+      if (finalText) {
+        setNoteText("");
+        void sendLiveMessage(finalText, "speech");
+      }
+    };
+    recognition.onerror = event => {
+      setError(`Live speech stopped: ${event.error ?? "speech recognition failed"}`);
+    };
+    recognition.onend = () => {
+      if (!voiceListeningRef.current) {
+        setVoiceListening(false);
+        return;
+      }
+      window.setTimeout(() => {
+        try {
+          recognition.start();
+        } catch {
+          setVoiceListening(false);
+        }
+      }, 250);
+    };
+    speechRecognitionRef.current = recognition;
+    voiceListeningRef.current = true;
+    setVoiceListening(true);
+    try {
+      recognition.start();
+    } catch (reason) {
+      voiceListeningRef.current = false;
+      setVoiceListening(false);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  function toggleVoiceInput() {
+    if (voiceListening) {
+      stopVoiceInput();
+    } else {
+      startVoiceInput();
+    }
   }
 
   async function windowControl(action: "minimize" | "close") {
@@ -1093,105 +1329,137 @@ export default function App() {
           aria-label="Active Screen-Aware capture"
           onMouseDown={event => void beginWindowDrag(event)}
         >
-          <div className="recording-pill">
-            <span className="record-dot" />
-            <span>Sharing</span>
+          <div className="toolbar-main">
+            <div className="recording-pill">
+              <span className="record-dot" />
+              <span>Sharing</span>
+            </div>
+
+            {!overlayCollapsed && (
+              <>
+                <div className="toolbar-buttons" data-no-drag="true">
+                  <button title="Pause or resume screen" onClick={() => void toggleTrack("display")}>
+                    {pausedTracks.screen ? <Play size={18} /> : <Monitor size={18} />}
+                  </button>
+                  <button
+                    title="Pause or resume microphone"
+                    onClick={() => void toggleTrack("mic")}
+                    disabled={!micEnabled}
+                  >
+                    {pausedTracks.mic || !micEnabled ? <MicOff size={18} /> : <Mic size={18} />}
+                  </button>
+                  <button
+                    title="Pause or resume system sound"
+                    onClick={() => void toggleTrack("system_audio")}
+                    disabled={!systemAudioEnabled}
+                  >
+                    {pausedTracks.system_audio || !systemAudioEnabled ? (
+                      <VolumeX size={18} />
+                    ) : (
+                      <Volume2 size={18} />
+                    )}
+                  </button>
+                </div>
+
+                <div className="annotation-controls" data-no-drag="true">
+                  <button
+                    className={annotationTool === "pointer" ? "active" : ""}
+                    type="button"
+                    title="Pointer"
+                    aria-label="Pointer"
+                    onClick={() => void setAnnotationMode("pointer")}
+                  >
+                    <MousePointer2 size={18} />
+                  </button>
+                  <button
+                    className={annotationTool === "pen" ? "active" : ""}
+                    type="button"
+                    title="Pen"
+                    aria-label="Pen"
+                    onClick={() => void setAnnotationMode("pen")}
+                  >
+                    <PencilLine size={18} />
+                  </button>
+                  <button
+                    className={annotationTool === "highlighter" ? "active" : ""}
+                    type="button"
+                    title="Highlighter"
+                    aria-label="Highlighter"
+                    onClick={() => void setAnnotationMode("highlighter")}
+                  >
+                    <Highlighter size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    title="Clear annotations"
+                    aria-label="Clear annotations"
+                    onClick={clearAnnotations}
+                    disabled={!annotationStrokes.length && !activeStroke && !annotationPointer}
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+
+                <form className="toolbar-note" data-no-drag="true" onSubmit={event => void submitNote(event)}>
+                  <input
+                    value={noteText}
+                    onChange={event => setNoteText(event.target.value)}
+                    placeholder="Ask live or describe what is broken..."
+                    aria-label="Ask Screen-Aware Live"
+                  />
+                  <button
+                    className={voiceListening ? "voice-live active" : "voice-live"}
+                    type="button"
+                    disabled={!speechAvailable || !micEnabled}
+                    title={speechAvailable ? "Talk live" : "Live speech unavailable"}
+                    aria-label="Talk live"
+                    onClick={toggleVoiceInput}
+                  >
+                    {voiceListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                  <button type="submit" disabled={!noteText.trim() || liveBusy} title="Send live message">
+                    {liveBusy ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
+                  </button>
+                </form>
+              </>
+            )}
+
+            <div className="toolbar-right" data-no-drag="true">
+              <button
+                className="toolbar-collapse"
+                type="button"
+                title={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
+                aria-label={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
+                onClick={() => void setCollapsed(!overlayCollapsed)}
+              >
+                {overlayCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+              </button>
+
+              <button className="toolbar-stop" onClick={() => void stopCapture()} disabled={busy}>
+                <Square size={16} />
+              </button>
+            </div>
           </div>
 
-          {!overlayCollapsed && (
-            <>
-              <div className="toolbar-buttons" data-no-drag="true">
-                <button title="Pause or resume screen" onClick={() => void toggleTrack("display")}>
-                  {pausedTracks.screen ? <Play size={18} /> : <Monitor size={18} />}
-                </button>
-                <button
-                  title="Pause or resume microphone"
-                  onClick={() => void toggleTrack("mic")}
-                  disabled={!micEnabled}
+          {!overlayCollapsed && liveMessages.length > 0 && (
+            <div className="live-thread" data-no-drag="true" aria-live="polite">
+              {liveMessages.slice(-4).map(message => (
+                <div
+                  key={message.id}
+                  className={`live-message ${message.role}${message.pending ? " pending" : ""}`}
                 >
-                  {pausedTracks.mic || !micEnabled ? <MicOff size={18} /> : <Mic size={18} />}
-                </button>
-                <button
-                  title="Pause or resume system sound"
-                  onClick={() => void toggleTrack("system_audio")}
-                  disabled={!systemAudioEnabled}
-                >
-                  {pausedTracks.system_audio || !systemAudioEnabled ? (
-                    <VolumeX size={18} />
-                  ) : (
-                    <Volume2 size={18} />
-                  )}
-                </button>
-              </div>
-
-              <div className="annotation-controls" data-no-drag="true">
-                <button
-                  className={annotationTool === "pointer" ? "active" : ""}
-                  type="button"
-                  title="Pointer"
-                  aria-label="Pointer"
-                  onClick={() => void setAnnotationMode("pointer")}
-                >
-                  <MousePointer2 size={18} />
-                </button>
-                <button
-                  className={annotationTool === "pen" ? "active" : ""}
-                  type="button"
-                  title="Pen"
-                  aria-label="Pen"
-                  onClick={() => void setAnnotationMode("pen")}
-                >
-                  <PencilLine size={18} />
-                </button>
-                <button
-                  className={annotationTool === "highlighter" ? "active" : ""}
-                  type="button"
-                  title="Highlighter"
-                  aria-label="Highlighter"
-                  onClick={() => void setAnnotationMode("highlighter")}
-                >
-                  <Highlighter size={18} />
-                </button>
-                <button
-                  type="button"
-                  title="Clear annotations"
-                  aria-label="Clear annotations"
-                  onClick={clearAnnotations}
-                  disabled={!annotationStrokes.length && !activeStroke && !annotationPointer}
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-
-              <form className="toolbar-note" data-no-drag="true" onSubmit={event => void submitNote(event)}>
-                <input
-                  value={noteText}
-                  onChange={event => setNoteText(event.target.value)}
-                  placeholder="Describe what the agent should inspect..."
-                  aria-label="Describe what the agent should inspect"
-                />
-                <button type="submit" disabled={!noteText.trim()} title="Send note">
-                  <Send size={16} />
-                </button>
-              </form>
-            </>
+                  <span>{message.role === "user" ? "You" : "Screen-Aware"}</span>
+                  <p>{message.text}</p>
+                </div>
+              ))}
+              {liveBusy && (
+                <div className="live-message assistant pending">
+                  <span>Screen-Aware</span>
+                  <p>Looking at the latest shared context...</p>
+                </div>
+              )}
+            </div>
           )}
-
-          <div className="toolbar-right" data-no-drag="true">
-            <button
-              className="toolbar-collapse"
-              type="button"
-              title={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
-              aria-label={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
-              onClick={() => void setCollapsed(!overlayCollapsed)}
-            >
-              {overlayCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            </button>
-
-            <button className="toolbar-stop" onClick={() => void stopCapture()} disabled={busy}>
-              <Square size={16} />
-            </button>
-          </div>
         </section>
         {error && (
           <div className="floating-error">
