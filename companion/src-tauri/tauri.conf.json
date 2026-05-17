@@ -14,9 +14,11 @@
       {
         "title": "Screen-Aware",
         "width": 460,
-        "height": 720,
+        "height": 590,
         "minWidth": 380,
-        "minHeight": 560,
+        "minHeight": 520,
+        "decorations": false,
+        "alwaysOnTop": true,
         "backgroundColor": "#f4f0e8"
       }
     ],

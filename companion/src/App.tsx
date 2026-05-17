@@ -11,9 +11,11 @@ import {
   RefreshCw,
   Send,
   Square,
+  X,
   Volume2,
   VolumeX
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createSession, getEvents, getStatus, liveUrl, postClientEvent } from "./api";
 import { tauriCapture } from "./capture";
 import type {
@@ -353,6 +355,10 @@ export default function App() {
     await refresh();
   }
 
+  async function closeWindow() {
+    await getCurrentWindow().close();
+  }
+
   if (capturing) {
     return (
       <main className="floating-mode">
@@ -416,15 +422,20 @@ export default function App() {
     <main className="recorder-stage">
       <section className="recorder-card" aria-label="Screen-Aware recorder">
         <header className="card-top">
-          <div className="window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
+          <div className="drag-region" data-tauri-drag-region>
+            <div className="window-dots" aria-hidden="true" data-tauri-drag-region>
+              <span data-tauri-drag-region />
+              <span data-tauri-drag-region />
+              <span data-tauri-drag-region />
+            </div>
           </div>
           <div className="agent-badge" data-state={agentConnected ? "connected" : "waiting"}>
             <span>{agentLabel}</span>
             <strong>{agentState}</strong>
           </div>
+          <button className="window-close" type="button" onClick={() => void closeWindow()}>
+            <X size={16} />
+          </button>
         </header>
 
         <div className="mode-switch" aria-label="Capture mode">
@@ -535,16 +546,6 @@ export default function App() {
           {loadingSources ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
           {displayChoices.length ? "Refresh sources" : "Choose source"}
         </button>
-
-        <label className="note-area">
-          <span>What should the agent understand?</span>
-          <textarea
-            value={issueText}
-            onChange={event => setIssueText(event.target.value)}
-            placeholder="The Flappy page starts, but the canvas is blank after pressing Start."
-            rows={3}
-          />
-        </label>
 
         <label className="save-context">
           <input

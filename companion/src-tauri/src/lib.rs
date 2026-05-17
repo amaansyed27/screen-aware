@@ -667,7 +667,7 @@ async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkRe
         window.set_always_on_top(false)?;
         window.set_size(Size::Logical(LogicalSize {
             width: 460.0,
-            height: 720.0,
+            height: 590.0,
         }))?;
     }
     Ok(OkResponse { ok: true })
