@@ -15,9 +15,10 @@
 body {
   margin: 0;
   min-width: 360px;
-  min-height: 500px;
+  min-height: 580px;
   background: transparent;
   overflow: hidden;
+  user-select: none;
 }
 
 html {
@@ -56,20 +57,21 @@ input:focus-visible {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 10px;
+  padding: 0;
   background: transparent;
 }
 
 .recorder-card {
-  width: calc(100vw - 20px);
-  height: calc(100vh - 20px);
+  width: 100vw;
+  height: 100vh;
   display: grid;
-  gap: 16px;
+  grid-template-rows: auto auto auto auto auto auto auto auto auto minmax(0, auto);
+  gap: 14px;
   align-content: start;
-  border: 1.5px solid #121212;
-  border-radius: 34px;
+  border: 1px solid #d8d4cc;
+  border-radius: 30px;
   background: #fffdfa;
-  padding: 18px;
+  padding: 14px 18px 18px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #c9c5bd transparent;
@@ -99,34 +101,63 @@ input:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-height: 42px;
+  cursor: grab;
 }
 
-.drag-region {
-  height: 34px;
-  display: flex;
-  align-items: center;
-  min-width: 0;
+.card-top:active {
+  cursor: grabbing;
 }
 
 .app-mark {
   display: inline-flex;
   align-items: center;
+  gap: 10px;
   min-width: 0;
-  max-width: 150px;
-  height: 34px;
-  border-radius: 999px;
+  height: 38px;
   color: #121212;
+}
+
+.app-mark > span {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #f2f0ed;
+}
+
+.app-mark div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.app-mark strong,
+.app-mark small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-mark strong {
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 760;
+}
+
+.app-mark small {
+  color: #6b675f;
+  font-size: 11px;
+  font-weight: 520;
 }
 
 .agent-badge {
   max-width: 122px;
   display: grid;
   gap: 1px;
-  border-radius: 18px;
-  padding: 8px 11px;
+  border-radius: 16px;
+  padding: 7px 11px;
   background: #f2f0ed;
 }
 
@@ -156,14 +187,14 @@ input:focus-visible {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
+  padding: 3px;
   border-radius: 999px;
   background: #f2f0ed;
 }
 
 .window-controls button {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -184,13 +215,13 @@ input:focus-visible {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 2px;
 }
 
 .mode-switch button {
-  height: 52px;
+  height: 54px;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .mode-switch button.selected {
@@ -205,13 +236,13 @@ input:focus-visible {
 }
 
 .recorder-row {
-  min-height: 74px;
+  min-height: 72px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   border: 1.5px solid transparent;
-  border-radius: 26px;
+  border-radius: 24px;
   background: #f2f0ed;
   padding: 12px 14px;
 }
@@ -266,6 +297,7 @@ input:focus-visible {
 
 .recorder-row strong {
   font-size: 16px;
+  font-weight: 760;
 }
 
 select {
@@ -278,7 +310,7 @@ select {
   color: #121212;
   padding: 0;
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 select:disabled {
@@ -286,11 +318,11 @@ select:disabled {
 }
 
 .small-toggle {
-  width: 58px;
+  width: 56px;
   height: 38px;
   background: #d7d3ca;
   color: #121212;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .small-toggle.on {
@@ -307,7 +339,7 @@ select:disabled {
   border: 1.5px solid #121212;
   border-radius: 22px;
   background: #fffdfa;
-  font-weight: 800;
+  font-weight: 760;
 }
 
 .save-context {
@@ -316,7 +348,7 @@ select:disabled {
   gap: 10px;
   padding: 0 4px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 680;
 }
 
 .save-context input {
@@ -353,7 +385,7 @@ select:disabled {
   background: #121212;
   color: #fffdfa;
   font-size: 17px;
-  font-weight: 900;
+  font-weight: 780;
 }
 
 .start-recording:hover:not(:disabled) {
@@ -395,6 +427,11 @@ select:disabled {
   border-radius: 32px;
   background: #fffdfa;
   padding: 10px;
+  cursor: grab;
+}
+
+.floating-toolbar:active {
+  cursor: grabbing;
 }
 
 .recording-pill {
@@ -484,7 +521,7 @@ select:disabled {
   }
 
   .recorder-card {
-    border-radius: 22px;
+    border-radius: 24px;
     padding: 18px;
   }
 

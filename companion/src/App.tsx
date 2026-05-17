@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -12,6 +12,7 @@ import {
   Play,
   RefreshCw,
   Send,
+  Sparkles,
   Square,
   X,
   Volume2,
@@ -361,16 +362,35 @@ export default function App() {
     await invoke("window_control", { action });
   }
 
+  async function beginWindowDrag(event: ReactMouseEvent<HTMLElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+    const target = event.target as HTMLElement;
+    if (target.closest("button, select, input, textarea, [data-no-drag='true']")) {
+      return;
+    }
+    if (event.detail === 2) {
+      await windowControl("maximize");
+      return;
+    }
+    await invoke("window_start_dragging");
+  }
+
   if (capturing) {
     return (
       <main className="floating-mode">
-        <section className="floating-toolbar" aria-label="Active Screen-Aware capture">
+        <section
+          className="floating-toolbar"
+          aria-label="Active Screen-Aware capture"
+          onMouseDown={event => void beginWindowDrag(event)}
+        >
           <div className="recording-pill">
             <span className="record-dot" />
             <span>Sharing</span>
           </div>
 
-          <div className="toolbar-buttons">
+          <div className="toolbar-buttons" data-no-drag="true">
             <button title="Pause or resume screen" onClick={() => void toggleTrack("display")}>
               {pausedTracks.screen ? <Play size={18} /> : <Monitor size={18} />}
             </button>
@@ -394,7 +414,7 @@ export default function App() {
             </button>
           </div>
 
-          <form className="toolbar-note" onSubmit={event => void submitNote(event)}>
+          <form className="toolbar-note" data-no-drag="true" onSubmit={event => void submitNote(event)}>
             <input
               value={noteText}
               onChange={event => setNoteText(event.target.value)}
@@ -406,7 +426,12 @@ export default function App() {
             </button>
           </form>
 
-          <button className="toolbar-stop" onClick={() => void stopCapture()} disabled={busy}>
+          <button
+            className="toolbar-stop"
+            data-no-drag="true"
+            onClick={() => void stopCapture()}
+            disabled={busy}
+          >
             <Square size={16} />
           </button>
         </section>
@@ -423,17 +448,25 @@ export default function App() {
   return (
     <main className="recorder-stage">
       <section className="recorder-card" aria-label="Screen-Aware recorder">
-        <header className="card-top">
-          <div className="drag-region" data-tauri-drag-region>
-            <div className="app-mark" data-tauri-drag-region>
-              <span data-tauri-drag-region>Screen-Aware</span>
+        <header className="card-top" onMouseDown={event => void beginWindowDrag(event)}>
+          <div className="app-mark">
+            <span aria-hidden="true">
+              <Sparkles size={16} />
+            </span>
+            <div>
+              <strong>Screen-Aware</strong>
+              <small>Share with Codex</small>
             </div>
           </div>
-          <div className="agent-badge" data-state={agentConnected ? "connected" : "waiting"}>
+          <div
+            className="agent-badge"
+            data-state={agentConnected ? "connected" : "waiting"}
+            data-no-drag="true"
+          >
             <span>{agentLabel}</span>
             <strong>{agentState}</strong>
           </div>
-          <div className="window-controls" aria-label="Window controls">
+          <div className="window-controls" aria-label="Window controls" data-no-drag="true">
             <button
               type="button"
               aria-label="Minimize"

@@ -666,8 +666,8 @@ async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkRe
     } else {
         window.set_always_on_top(false)?;
         window.set_size(Size::Logical(LogicalSize {
-            width: 460.0,
-            height: 590.0,
+            width: 440.0,
+            height: 660.0,
         }))?;
     }
     Ok(OkResponse { ok: true })
@@ -697,6 +697,15 @@ async fn window_control(app: AppHandle, action: String) -> CaptureResult<OkRespo
     Ok(OkResponse { ok: true })
 }
 
+#[tauri::command]
+async fn window_start_dragging(app: AppHandle) -> CaptureResult<OkResponse> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
+    window.start_dragging()?;
+    Ok(OkResponse { ok: true })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(CaptureState::default())
@@ -710,7 +719,8 @@ pub fn run() {
             stop_capture,
             shutdown_capture,
             set_compact_window,
-            window_control
+            window_control,
+            window_start_dragging
         ])
         .setup(|app| {
             let _ = app.path().app_data_dir();
