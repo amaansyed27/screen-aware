@@ -10,6 +10,19 @@ export default defineConfig({
     strictPort: true,
     watch: {
       ignored: ["**/src-tauri/**"]
+    },
+    proxy: {
+      "/screen-aware-api": {
+        target: "http://127.0.0.1:8787",
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/screen-aware-api/, "/api")
+      },
+      "/screen-aware-live": {
+        target: "ws://127.0.0.1:8787",
+        changeOrigin: true,
+        ws: true,
+        rewrite: path => path.replace(/^\/screen-aware-live/, "/api/live")
+      }
     }
   },
   build: {

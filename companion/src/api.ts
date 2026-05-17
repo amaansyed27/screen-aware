@@ -1,6 +1,9 @@
 import type { ApiStatus, ScreenAwareEvent, SessionHandshake } from "./types";
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
+const DEV_API_BASE = "/screen-aware-api";
+const PROD_API_BASE = "http://127.0.0.1:8787";
+
+export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? DEV_API_BASE : PROD_API_BASE);
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
@@ -49,6 +52,10 @@ export function postClientEvent(input: {
 }
 
 export function liveUrl(): string {
+  if (API_BASE.startsWith("/")) {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${window.location.host}/screen-aware-live`;
+  }
   const base = new URL(API_BASE);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   base.pathname = "/api/live";

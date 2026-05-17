@@ -93,6 +93,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [loadingSources, setLoadingSources] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backendOnline, setBackendOnline] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
@@ -150,16 +151,41 @@ export default function App() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
     setStatus(nextStatus);
     setEvents(nextEvents.events);
+    setBackendOnline(true);
   }
 
   useEffect(() => {
-    void refresh().catch((reason: unknown) => setError(String(reason)));
-    const timer = window.setInterval(() => {
-      void getStatus()
-        .then(setStatus)
-        .catch(() => undefined);
-    }, 4000);
+    let stopped = false;
 
+    async function poll() {
+      try {
+        await refresh();
+        if (!stopped) {
+          setError(null);
+        }
+      } catch {
+        if (!stopped) {
+          setBackendOnline(false);
+          setError("Backend unavailable. Start screen-aware-api, then refresh.");
+        }
+      }
+    }
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, backendOnline ? 6000 : 12000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [backendOnline]);
+
+  useEffect(() => {
+    if (!backendOnline) {
+      return undefined;
+    }
     const ws = new WebSocket(liveUrl());
     ws.addEventListener("message", message => {
       const payload = JSON.parse(String(message.data));
@@ -174,9 +200,19 @@ export default function App() {
       }
     });
     ws.addEventListener("error", () => {
-      setError("Backend live socket is unavailable.");
+      setBackendOnline(false);
+      setError("Backend live socket is unavailable. Restart screen-aware-api.");
+    });
+    ws.addEventListener("close", () => {
+      setBackendOnline(false);
     });
 
+    return () => {
+      ws.close();
+    };
+  }, [backendOnline]);
+
+  useEffect(() => {
     const unsubscribe = tauriCapture.onEvent((event: CompanionEvent) => {
       setEvents(previous => [
         ...previous.slice(-39),
@@ -197,8 +233,6 @@ export default function App() {
     });
 
     return () => {
-      window.clearInterval(timer);
-      ws.close();
       unsubscribe?.();
     };
   }, [currentSessionId]);

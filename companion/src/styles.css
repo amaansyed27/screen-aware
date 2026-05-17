@@ -269,6 +269,7 @@ input:focus-visible {
 
 .picker-row:has(.picker-menu) {
   z-index: 5;
+  align-items: start;
 }
 
 .picker-value {
@@ -301,10 +302,8 @@ input:focus-visible {
 }
 
 .picker-menu {
-  position: absolute;
-  left: 48px;
-  right: 14px;
-  top: calc(100% + 8px);
+  grid-column: 1 / -1;
+  position: static;
   max-height: 212px;
   display: grid;
   gap: 6px;
@@ -313,6 +312,7 @@ input:focus-visible {
   border-radius: 22px;
   background: #fffdfa;
   padding: 8px;
+  margin-top: 2px;
   scrollbar-width: thin;
   scrollbar-color: #c9c5bd transparent;
 }
