@@ -21,6 +21,8 @@ AUDIO_PROMPT = """Summarize the developer's spoken issue and intent.
 Extract bug symptoms, expected behavior, observed behavior, filenames, commands,
 error messages, and hypotheses. Keep the summary grounded in what was said."""
 
+DEFAULT_SELECT_FRAMES = ["first", "middle", "last"]
+
 
 class VideoDBService:
     """Thin compatibility layer around the real VideoDB Python SDK."""
@@ -197,11 +199,7 @@ class VideoDBService:
                 visual_index = self._call_supported(
                     rtstream.index_visuals,
                     prompt=VISUAL_PROMPT,
-                    batch_config={
-                        "type": "time",
-                        "value": self.settings.visual_batch_seconds,
-                        "frame_count": self.settings.visual_frame_count,
-                    },
+                    batch_config=self._visual_batch_config(),
                     model_name=self.settings.visual_model,
                     name="screen_aware_visual",
                     ws_connection_id=ws_id,
@@ -238,24 +236,42 @@ class VideoDBService:
                 description=f"Screen-Aware window capture segment from {source_label}",
             )
             video_id = self._media_id(video)
-            visual_index = self._call_supported(
-                video.index_visuals,
-                prompt=VISUAL_PROMPT,
-                batch_config={
-                    "type": "time",
-                    "value": self.settings.visual_batch_seconds,
-                    "frame_count": self.settings.visual_frame_count,
-                },
-                model_name=self.settings.visual_model,
-                name=f"screen_aware_window_visual_{sequence:04d}",
-            )
+            errors: list[str] = []
+            visual_index = None
+            try:
+                visual_index = self._call_supported(
+                    video.index_visuals,
+                    prompt=VISUAL_PROMPT,
+                    batch_config=self._visual_batch_config(),
+                    model_name=self.settings.visual_model,
+                    name=f"screen_aware_window_visual_{sequence:04d}",
+                )
+            except Exception as exc:
+                errors.append(f"visual: {type(exc).__name__}: {exc}")
+
             audio_index = None
+            transcript_text = None
             if contains_audio:
                 try:
                     self._call_supported(video.index_spoken_words, force=True)
-                except Exception:
-                    # The segment may be video-only or too short for transcription.
-                    pass
+                    transcript_text = self._transcript_text(video)
+                    if transcript_text:
+                        self.store.append_event(
+                            {
+                                "source": "videodb",
+                                "channel": "transcript",
+                                "event": "window.segment.transcript",
+                                "capture_session_id": session_id,
+                                "data": {
+                                    "sequence": sequence,
+                                    "source_label": source_label,
+                                    "video_id": video_id,
+                                    "text": transcript_text,
+                                },
+                            }
+                        )
+                except Exception as exc:
+                    errors.append(f"transcript: {type(exc).__name__}: {exc}")
                 try:
                     audio_index = self._call_supported(
                         video.index_audio,
@@ -264,8 +280,8 @@ class VideoDBService:
                         model_name=self.settings.visual_model,
                         name=f"screen_aware_window_audio_{sequence:04d}",
                     )
-                except Exception:
-                    audio_index = None
+                except Exception as exc:
+                    errors.append(f"audio: {type(exc).__name__}: {exc}")
 
             item = {
                 "kind": "window_segment",
@@ -280,21 +296,28 @@ class VideoDBService:
                 "contains_audio": contains_audio,
                 "visual_index_id": self._index_id(visual_index),
                 "audio_index_id": self._index_id(audio_index),
+                "transcript_text": transcript_text,
+                "errors": errors,
             }
             self.store.append_session_item(session_id, "uploaded_videos", item)
+            indexed = bool(item["visual_index_id"] or item["audio_index_id"] or transcript_text)
             self.store.append_event(
                 {
                     "source": "videodb",
                     "channel": "window",
-                    "event": "window.segment.indexed",
+                    "event": "window.segment.indexed" if indexed else "window.segment.index_failed",
                     "capture_session_id": session_id,
                     "data": {
                         **item,
-                        "text": f"VideoDB indexed window segment {sequence} from {source_label}.",
+                        "text": self._window_segment_event_text(sequence, source_label, indexed, errors),
                     },
                 }
             )
-            self.store.upsert_session(session_id, indexing_status="window_segments_indexed")
+            self.store.upsert_session(
+                session_id,
+                indexing_status="window_segments_indexed" if indexed else "window_segment_failed",
+                error="; ".join(errors) if errors and not indexed else "",
+            )
         except Exception as exc:
             self.store.append_event(
                 {
@@ -316,6 +339,39 @@ class VideoDBService:
                 indexing_status="window_segment_failed",
                 error=f"{type(exc).__name__}: {exc}",
             )
+
+    def _visual_batch_config(self) -> dict[str, Any]:
+        frame_count = max(1, self.settings.visual_frame_count)
+        return {
+            "type": "time",
+            "value": self.settings.visual_batch_seconds,
+            "frame_count": frame_count,
+            "select_frames": DEFAULT_SELECT_FRAMES[: min(frame_count, len(DEFAULT_SELECT_FRAMES))],
+        }
+
+    @staticmethod
+    def _transcript_text(video: Any) -> str | None:
+        try:
+            text = video.get_transcript_text()
+        except Exception:
+            return None
+        if isinstance(text, str):
+            stripped = text.strip()
+            return stripped or None
+        return None
+
+    @staticmethod
+    def _window_segment_event_text(
+        sequence: int, source_label: str, indexed: bool, errors: list[str]
+    ) -> str:
+        if indexed and errors:
+            return (
+                f"VideoDB partially indexed window segment {sequence} from {source_label}; "
+                f"{'; '.join(errors)}"
+            )
+        if indexed:
+            return f"VideoDB indexed window segment {sequence} from {source_label}."
+        return f"VideoDB failed to index window segment {sequence}: {'; '.join(errors)}"
 
     def _get_rtstream(self, rtstream_id: str) -> Any:
         conn = self.conn()
@@ -444,7 +500,11 @@ class VideoDBService:
                         query,
                         score_threshold,
                         limit - len(shots),
-                        scene_index_id=item.get("visual_index_id"),
+                        scene_index_ids=[
+                            str(index_id)
+                            for index_id in (item.get("visual_index_id"), item.get("audio_index_id"))
+                            if index_id
+                        ],
                     )
                     for shot in segment_shots:
                         shot.setdefault("video_id", video_id)
@@ -508,13 +568,13 @@ class VideoDBService:
         query: str,
         score_threshold: float,
         limit: int,
-        scene_index_id: str | None = None,
+        scene_index_ids: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         video = self.collection().get_video(video_id)
         attempts: list[Callable[[], Any]] = []
-        if scene_index_id:
+        for scene_index_id in scene_index_ids or []:
             attempts.append(
-                lambda: video.search(
+                lambda scene_index_id=scene_index_id: video.search(
                     query=query,
                     search_type="semantic",
                     index_type="scene",
@@ -537,12 +597,21 @@ class VideoDBService:
         for attempt in attempts:
             try:
                 return self._shots_from_result(attempt())
-            except TypeError as exc:
+            except Exception as exc:
+                if not self._recoverable_search_error(exc):
+                    raise
                 last_error = exc
                 continue
         if last_error:
             raise last_error
         return []
+
+    @staticmethod
+    def _recoverable_search_error(exc: Exception) -> bool:
+        if isinstance(exc, TypeError):
+            return True
+        message = str(exc).lower()
+        return "no results found" in message or "not found" in message
 
     @staticmethod
     def _shots_from_result(result: Any) -> list[dict[str, Any]]:
