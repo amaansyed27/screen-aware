@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import httpx
@@ -8,6 +9,16 @@ import httpx
 from .config import Settings
 from .event_store import event_text
 from .formatters import compact_event
+
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+OPENAI_COMPATIBLE_PROVIDERS = {"openrouter", "openai", "openai-compatible"}
+GEMINI_MODEL_ALIASES = {
+    "google/gemini-3-flash-preview": "gemini-3-flash-preview",
+    "google/gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
+    "google/gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite-preview",
+}
 
 
 class LiveAssistant:
@@ -21,8 +32,23 @@ class LiveAssistant:
         self.settings = settings
 
     @property
+    def provider(self) -> str:
+        provider = self.settings.live_ai_provider.strip().lower()
+        return provider or "openrouter"
+
+    @property
+    def api_key(self) -> str | None:
+        if self.settings.live_ai_api_key:
+            return self.settings.live_ai_api_key
+        if self.provider == "gemini":
+            return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if self.provider == "openrouter":
+            return os.getenv("OPENROUTER_API_KEY")
+        return os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+
+    @property
     def configured(self) -> bool:
-        return bool(self.settings.live_ai_api_key)
+        return bool(self.api_key)
 
     async def respond(
         self,
@@ -35,14 +61,19 @@ class LiveAssistant:
         warnings: list[str],
     ) -> dict[str, Any]:
         if not self.configured:
+            key_hint = (
+                "SCREEN_AWARE_LIVE_API_KEY or GEMINI_API_KEY"
+                if self.provider == "gemini"
+                else "SCREEN_AWARE_LIVE_API_KEY or OPENROUTER_API_KEY"
+            )
             return {
                 "ok": False,
                 "status": "not_configured",
-                "provider": "openai-compatible",
+                "provider": self.provider,
                 "model": self.settings.live_ai_model,
                 "text": (
-                    "Live replies need a model key. Add SCREEN_AWARE_LIVE_API_KEY "
-                    "or OPENROUTER_API_KEY to .env, restart screen-aware-api, then ask again."
+                    f"Live replies need a model key. Add {key_hint} to .env, "
+                    "restart screen-aware-api, then ask again."
                 ),
                 "warnings": warnings,
             }
@@ -55,14 +86,22 @@ class LiveAssistant:
             search_results=search_results,
             warnings=warnings,
         )
-        response, model = await self._chat_completion(prompt)
+        if self.provider == "gemini":
+            response, model = await self._gemini_completion(prompt)
+        elif self.provider in OPENAI_COMPATIBLE_PROVIDERS:
+            response, model = await self._chat_completion(prompt)
+        else:
+            raise ValueError(
+                "Unsupported SCREEN_AWARE_LIVE_PROVIDER. Use openrouter, gemini, "
+                "or openai-compatible."
+            )
         text = response.strip()
         if not text:
             text = "I did not get a usable live reply from the model. Try that once more."
         return {
             "ok": True,
             "status": "answered",
-            "provider": "openai-compatible",
+            "provider": self.provider,
             "model": model,
             "text": text,
             "warnings": warnings,
@@ -120,7 +159,7 @@ class LiveAssistant:
             "data": data,
         }
 
-    def _model_candidates(self) -> list[str]:
+    def _model_candidates(self, *, gemini: bool = False) -> list[str]:
         candidates = [self.settings.live_ai_model]
         candidates.extend(
             item.strip()
@@ -129,6 +168,8 @@ class LiveAssistant:
         )
         deduped: list[str] = []
         for model in candidates:
+            if gemini:
+                model = GEMINI_MODEL_ALIASES.get(model, model)
             if model not in deduped:
                 deduped.append(model)
         return deduped
@@ -137,7 +178,7 @@ class LiveAssistant:
         base_url = self.settings.live_ai_base_url.rstrip("/")
         url = f"{base_url}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {self.settings.live_ai_api_key}",
+            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://127.0.0.1:8787",
             "X-Title": "Screen-Aware Copilot",
@@ -169,3 +210,62 @@ class LiveAssistant:
         if last_error is not None:
             raise last_error
         return "", self.settings.live_ai_model
+
+    async def _gemini_completion(self, messages: list[dict[str, str]]) -> tuple[str, str]:
+        base_url = self.settings.live_ai_base_url.rstrip("/")
+        if base_url in {OPENROUTER_BASE_URL, "https://api.openai.com/v1"}:
+            base_url = GEMINI_BASE_URL
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key or "",
+        }
+        system_message = next(
+            (message["content"] for message in messages if message["role"] == "system"),
+            "",
+        )
+        user_message = next(
+            (message["content"] for message in messages if message["role"] == "user"),
+            "",
+        )
+        last_error: Exception | None = None
+        async with httpx.AsyncClient(timeout=self.settings.live_ai_timeout_seconds) as client:
+            for model in self._model_candidates(gemini=True):
+                body = {
+                    "systemInstruction": {"parts": [{"text": system_message}]},
+                    "contents": [{"role": "user", "parts": [{"text": user_message}]}],
+                    "generationConfig": {
+                        "temperature": 0.2,
+                        "maxOutputTokens": 220,
+                        "thinkingConfig": {
+                            "thinkingLevel": self.settings.live_ai_thinking_level,
+                        },
+                    },
+                }
+                try:
+                    response = await client.post(
+                        f"{base_url}/models/{model}:generateContent",
+                        headers=headers,
+                        json=body,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                except Exception as exc:  # noqa: BLE001 - try configured model fallbacks.
+                    last_error = exc
+                    continue
+                return self._extract_gemini_text(data), model
+        if last_error is not None:
+            raise last_error
+        return "", self.settings.live_ai_model
+
+    @staticmethod
+    def _extract_gemini_text(data: dict[str, Any]) -> str:
+        candidates = data.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            return ""
+        content = candidates[0].get("content")
+        if not isinstance(content, dict):
+            return ""
+        parts = content.get("parts")
+        if not isinstance(parts, list):
+            return ""
+        return "".join(part.get("text", "") for part in parts if isinstance(part, dict))

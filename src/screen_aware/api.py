@@ -270,7 +270,7 @@ async def live_message(request: LiveMessageRequest) -> dict[str, Any]:
         reply = {
             "ok": False,
             "status": "error",
-            "provider": "openai-compatible",
+            "provider": settings.live_ai_provider,
             "model": settings.live_ai_model,
             "text": f"Live reply failed: {exc}",
             "warnings": warnings,

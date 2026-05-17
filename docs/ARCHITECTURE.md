@@ -92,4 +92,4 @@ flowchart LR
 - MCP clients should pass `SCREEN_AWARE_ENV_FILE` and `SCREEN_AWARE_DATA_DIR`, not the key itself.
 - `.screen-aware/`, `.env`, Tauri targets, and dependency folders are ignored.
 - The MCP tools are read-only and do not execute code or mutate the developer project.
-- Live model keys belong only in `.env` or user environment variables. They are never sent to the companion UI. The default provider is OpenRouter with Gemini 3 Flash as primary and Gemini Flash Lite models as fallbacks.
+- Live model keys belong only in `.env` or user environment variables. They are never sent to the companion UI. The default provider is OpenRouter with Gemini 3 Flash as primary and Gemini Flash Lite as fallback; direct Gemini API is available with `SCREEN_AWARE_LIVE_PROVIDER=gemini`.

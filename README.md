@@ -21,6 +21,9 @@ or `OPENROUTER_API_KEY`. The default live path uses OpenRouter with
 `google/gemini-3-flash-preview`, then falls back to Gemini Flash Lite models through the
 OpenAI-compatible `/chat/completions` endpoint.
 
+Direct Gemini API is also supported. Use `SCREEN_AWARE_LIVE_PROVIDER=gemini` with
+`gemini-3-flash-preview` or `gemini-3.1-flash-lite-preview`.
+
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion
 npm install
@@ -62,7 +65,7 @@ screen-aware/
     config.py           environment and .env settings
     event_store.py      shared JSON/JSONL state under .screen-aware/
     formatters.py       API and MCP response formatting
-    live_assistant.py   live overlay replies through an OpenAI-compatible model API
+    live_assistant.py   live overlay replies through OpenRouter or Gemini API
     mcp_server.py       FastMCP stdio server
     videodb_service.py  VideoDB CaptureSession, RTStream indexing, search
   companion/

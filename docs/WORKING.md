@@ -13,19 +13,30 @@ notepad .env
 
 Set `VIDEO_DB_API_KEY` in `.env`. Do not commit `.env`.
 
-For true live overlay replies, set an OpenRouter key as well:
+For true live overlay replies, set either an OpenRouter key or a Gemini API key:
 
 ```powershell
 notepad .env
 ```
 
-Use either `SCREEN_AWARE_LIVE_API_KEY` or `OPENROUTER_API_KEY`. The default live model
-settings use OpenRouter's OpenAI-compatible `/chat/completions` endpoint:
+OpenRouter is the default. Use either `SCREEN_AWARE_LIVE_API_KEY` or `OPENROUTER_API_KEY`:
 
 ```env
+SCREEN_AWARE_LIVE_PROVIDER=openrouter
 SCREEN_AWARE_LIVE_BASE_URL=https://openrouter.ai/api/v1
 SCREEN_AWARE_LIVE_MODEL=google/gemini-3-flash-preview
 SCREEN_AWARE_LIVE_FALLBACK_MODELS=google/gemini-3.1-flash-lite,google/gemini-3.1-flash-lite-preview
+```
+
+For direct Gemini API, use `SCREEN_AWARE_LIVE_PROVIDER=gemini` and either
+`SCREEN_AWARE_LIVE_API_KEY`, `GEMINI_API_KEY`, or `GOOGLE_API_KEY`:
+
+```env
+SCREEN_AWARE_LIVE_PROVIDER=gemini
+SCREEN_AWARE_LIVE_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+SCREEN_AWARE_LIVE_MODEL=gemini-3-flash-preview
+SCREEN_AWARE_LIVE_FALLBACK_MODELS=gemini-3.1-flash-lite-preview
+SCREEN_AWARE_LIVE_THINKING_LEVEL=low
 ```
 
 ```powershell
@@ -110,7 +121,7 @@ Press Stop in the companion. The backend keeps the local session state and event
 
 - Backend says key missing: make sure `.env` exists and contains `VIDEO_DB_API_KEY`.
 - MCP client says key missing: pass `SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env`.
-- Overlay says live replies need a model key: add `SCREEN_AWARE_LIVE_API_KEY` or `OPENROUTER_API_KEY` to `.env`, then restart `screen-aware-api`.
+- Overlay says live replies need a model key: add `SCREEN_AWARE_LIVE_API_KEY`, `OPENROUTER_API_KEY`, or `GEMINI_API_KEY` to `.env`, then restart `screen-aware-api`.
 - Live mic button is disabled: your current WebView does not expose speech recognition. Type in the overlay; VideoDB still indexes microphone audio for MCP search.
 - MCP client sees no events: start the backend and companion first, then run `screen_aware_get_capture_status`.
 - Tauri cannot find capture binary: run `npm install` inside `companion/` or set `VIDEODB_CAPTURE_BINARY`.
