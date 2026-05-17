@@ -24,7 +24,7 @@ Set `SCREEN_AWARE_AGENT_NAME` per client if you want the companion to show a fri
 CLI install:
 
 ```powershell
-codex mcp add screen-aware --env SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware --env SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env -- C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
+codex mcp add screen-aware --env SCREEN_AWARE_AGENT_NAME=Codex --env SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware --env SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env -- C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
 codex mcp list
 ```
 
@@ -40,6 +40,7 @@ tool_timeout_sec = 120
 enabled = true
 
 [mcp_servers.screen-aware.env]
+SCREEN_AWARE_AGENT_NAME = "Codex"
 SCREEN_AWARE_DATA_DIR = "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware"
 SCREEN_AWARE_ENV_FILE = "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
 ```
@@ -49,7 +50,7 @@ In Codex, run `/mcp` or `codex mcp list` and confirm `screen-aware` is connected
 ## Claude Code
 
 ```powershell
-claude mcp add --transport stdio --scope user --env SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware --env SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env screen-aware -- C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
+claude mcp add --transport stdio --scope user --env SCREEN_AWARE_AGENT_NAME="Claude Code" --env SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware --env SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env screen-aware -- C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
 claude mcp list
 ```
 
@@ -60,7 +61,7 @@ Inside Claude Code, run `/mcp` to check connection status.
 Command form:
 
 ```powershell
-gemini mcp add -s user -e SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware -e SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env screen-aware C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
+gemini mcp add -s user -e SCREEN_AWARE_AGENT_NAME="Gemini CLI" -e SCREEN_AWARE_DATA_DIR=C:\Users\Amaan\Downloads\screen-aware\.screen-aware -e SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env screen-aware C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server
 gemini mcp list
 ```
 
@@ -74,6 +75,7 @@ Manual `~/.gemini/settings.json` or project `.gemini/settings.json`:
       "args": ["-m", "screen_aware.mcp_server"],
       "cwd": "C:\\Users\\Amaan\\Downloads\\screen-aware",
       "env": {
+        "SCREEN_AWARE_AGENT_NAME": "Gemini CLI",
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
       },
@@ -100,7 +102,7 @@ Open Antigravity Agent pane, use the menu, open MCP Servers, Manage MCP Servers,
       "env": {
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env",
-        "SCREEN_AWARE_AGENT_NAME": "Your agent"
+        "SCREEN_AWARE_AGENT_NAME": "Antigravity"
       }
     }
   }
@@ -126,6 +128,7 @@ Add to `opencode.json` in your project or `~/.config/opencode/opencode.json`:
       ],
       "enabled": true,
       "environment": {
+        "SCREEN_AWARE_AGENT_NAME": "OpenCode",
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
       },
@@ -150,6 +153,7 @@ Add `.vscode/mcp.json` in the target project or open the user MCP config through
       "args": ["-m", "screen_aware.mcp_server"],
       "envFile": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env",
       "env": {
+        "SCREEN_AWARE_AGENT_NAME": "VS Code Copilot",
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
       }
@@ -171,6 +175,7 @@ Open Cline MCP settings from the MCP Servers icon or edit `cline_mcp_settings.js
       "command": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.venv\\Scripts\\python.exe",
       "args": ["-m", "screen_aware.mcp_server"],
       "env": {
+        "SCREEN_AWARE_AGENT_NAME": "Cline",
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
       },
@@ -201,6 +206,7 @@ Use this shape for clients that understand the common `mcpServers` JSON format:
       "args": ["-m", "screen_aware.mcp_server"],
       "cwd": "C:\\Users\\Amaan\\Downloads\\screen-aware",
       "env": {
+        "SCREEN_AWARE_AGENT_NAME": "Your agent",
         "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
         "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
       }

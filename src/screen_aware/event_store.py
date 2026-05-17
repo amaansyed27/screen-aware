@@ -109,6 +109,32 @@ class EventStore:
             self._write_state_unlocked(state)
             return session
 
+    def append_session_item(
+        self, session_id: str, field: str, item: dict[str, Any], *, max_items: int = 100
+    ) -> dict[str, Any]:
+        with self._lock:
+            state = self.read_state()
+            sessions = state.setdefault("sessions", {})
+            session = sessions.setdefault(
+                session_id,
+                {
+                    "session_id": session_id,
+                    "created_at": utc_now_iso(),
+                    "status": "created",
+                    "rtstreams": [],
+                    "indexes": [],
+                    "client_events": [],
+                },
+            )
+            values = session.setdefault(field, [])
+            values.append({**item, "ts": utc_now_iso()})
+            if max_items > 0:
+                del values[:-max_items]
+            session["updated_at"] = utc_now_iso()
+            state["current_session_id"] = session_id
+            self._write_state_unlocked(state)
+            return session
+
     def get_session(self, session_id: str | None = None) -> dict[str, Any] | None:
         state = self.read_state()
         target = session_id or state.get("current_session_id")

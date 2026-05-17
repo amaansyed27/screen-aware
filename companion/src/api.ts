@@ -7,7 +7,7 @@ export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? 
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (init?.body) {
+  if (init?.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   const response = await fetch(`${API_BASE}${path}`, {
@@ -49,6 +49,34 @@ export function postClientEvent(input: {
     method: "POST",
     body: JSON.stringify(input)
   });
+}
+
+export function postWindowCaptureSegment(input: {
+  sessionId: string;
+  sequence: number;
+  sourceLabel: string;
+  containsAudio: boolean;
+  storeCapture: boolean;
+  startedAtMs: number;
+  endedAtMs: number;
+  blob: Blob;
+}): Promise<{ ok: boolean; path: string; bytes: number; queued: boolean }> {
+  const body = new FormData();
+  body.set("session_id", input.sessionId);
+  body.set("sequence", String(input.sequence));
+  body.set("source_label", input.sourceLabel);
+  body.set("contains_audio", String(input.containsAudio));
+  body.set("store_capture", String(input.storeCapture));
+  body.set("started_at_ms", String(input.startedAtMs));
+  body.set("ended_at_ms", String(input.endedAtMs));
+  body.set("segment", input.blob, `window-segment-${String(input.sequence).padStart(4, "0")}.webm`);
+  return request<{ ok: boolean; path: string; bytes: number; queued: boolean }>(
+    "/api/window-capture/segments",
+    {
+      method: "POST",
+      body
+    }
+  );
 }
 
 export function liveUrl(): string {

@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import os
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from .config import Settings
@@ -216,6 +217,106 @@ class VideoDBService:
 
         self.store.upsert_session(session_id, indexes=indexes, indexing_status="started")
 
+    def ingest_window_capture_segment(
+        self,
+        *,
+        session_id: str,
+        file_path: Path,
+        sequence: int,
+        source_label: str,
+        contains_audio: bool,
+        started_at_ms: int | None,
+        ended_at_ms: int | None,
+    ) -> None:
+        """Upload a browser-selected window segment to VideoDB and start searchable indexes."""
+
+        segment_name = f"screen-aware-window-{session_id}-{sequence:04d}"
+        try:
+            video = self.collection().upload(
+                file_path=str(file_path),
+                name=segment_name,
+                description=f"Screen-Aware window capture segment from {source_label}",
+            )
+            video_id = self._media_id(video)
+            visual_index = self._call_supported(
+                video.index_visuals,
+                prompt=VISUAL_PROMPT,
+                batch_config={
+                    "type": "time",
+                    "value": self.settings.visual_batch_seconds,
+                    "frame_count": self.settings.visual_frame_count,
+                },
+                model_name=self.settings.visual_model,
+                name=f"screen_aware_window_visual_{sequence:04d}",
+            )
+            audio_index = None
+            if contains_audio:
+                try:
+                    self._call_supported(video.index_spoken_words, force=True)
+                except Exception:
+                    # The segment may be video-only or too short for transcription.
+                    pass
+                try:
+                    audio_index = self._call_supported(
+                        video.index_audio,
+                        prompt=AUDIO_PROMPT,
+                        batch_config={"type": "word", "value": self.settings.audio_batch_words},
+                        model_name=self.settings.visual_model,
+                        name=f"screen_aware_window_audio_{sequence:04d}",
+                    )
+                except Exception:
+                    audio_index = None
+
+            item = {
+                "kind": "window_segment",
+                "sequence": sequence,
+                "source_label": source_label,
+                "file_path": str(file_path),
+                "video_id": video_id,
+                "stream_url": getattr(video, "stream_url", None),
+                "player_url": getattr(video, "player_url", None),
+                "started_at_ms": started_at_ms,
+                "ended_at_ms": ended_at_ms,
+                "contains_audio": contains_audio,
+                "visual_index_id": self._index_id(visual_index),
+                "audio_index_id": self._index_id(audio_index),
+            }
+            self.store.append_session_item(session_id, "uploaded_videos", item)
+            self.store.append_event(
+                {
+                    "source": "videodb",
+                    "channel": "window",
+                    "event": "window.segment.indexed",
+                    "capture_session_id": session_id,
+                    "data": {
+                        **item,
+                        "text": f"VideoDB indexed window segment {sequence} from {source_label}.",
+                    },
+                }
+            )
+            self.store.upsert_session(session_id, indexing_status="window_segments_indexed")
+        except Exception as exc:
+            self.store.append_event(
+                {
+                    "source": "videodb",
+                    "channel": "window",
+                    "event": "window.segment.index_failed",
+                    "capture_session_id": session_id,
+                    "data": {
+                        "sequence": sequence,
+                        "source_label": source_label,
+                        "file_path": str(file_path),
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "text": f"VideoDB failed to index window segment {sequence}: {exc}",
+                    },
+                }
+            )
+            self.store.upsert_session(
+                session_id,
+                indexing_status="window_segment_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
     def _get_rtstream(self, rtstream_id: str) -> Any:
         conn = self.conn()
         if hasattr(conn, "get_rtstream"):
@@ -253,10 +354,25 @@ class VideoDBService:
 
     @staticmethod
     def _index_id(index: Any) -> str | None:
+        if isinstance(index, str):
+            return index
         for name in ("rtstream_index_id", "rtstreamIndexId", "id", "index_id"):
             value = getattr(index, name, None)
             if value:
                 return str(value)
+        return None
+
+    @staticmethod
+    def _media_id(media: Any) -> str | None:
+        for name in ("id", "video_id", "videoId", "media_id", "mediaId"):
+            value = getattr(media, name, None)
+            if value:
+                return str(value)
+        if isinstance(media, dict):
+            for name in ("id", "video_id", "videoId", "media_id", "mediaId"):
+                value = media.get(name)
+                if value:
+                    return str(value)
         return None
 
     @staticmethod
@@ -315,11 +431,36 @@ class VideoDBService:
             except Exception as exc:  # VideoDB SDK exposes several runtime exceptions.
                 warnings.append(f"VideoDB RTStream search failed for {rtstream_id}: {type(exc).__name__}: {exc}")
 
-        if not shots and session.get("exported_video_id"):
+        if len(shots) < limit:
+            for item in reversed(session.get("uploaded_videos") or []):
+                if len(shots) >= limit:
+                    break
+                video_id = item.get("video_id") if isinstance(item, dict) else None
+                if not video_id:
+                    continue
+                try:
+                    segment_shots = self._search_exported_video(
+                        str(video_id),
+                        query,
+                        score_threshold,
+                        limit - len(shots),
+                        scene_index_id=item.get("visual_index_id"),
+                    )
+                    for shot in segment_shots:
+                        shot.setdefault("video_id", video_id)
+                        shot.setdefault("source_label", item.get("source_label"))
+                        shot.setdefault("window_sequence", item.get("sequence"))
+                        shots.append(shot)
+                except Exception as exc:
+                    warnings.append(
+                        f"VideoDB window segment search failed for {video_id}: {type(exc).__name__}: {exc}"
+                    )
+
+        if len(shots) < limit and session.get("exported_video_id"):
             try:
                 shots.extend(
                     self._search_exported_video(
-                        str(session["exported_video_id"]), query, score_threshold, limit
+                        str(session["exported_video_id"]), query, score_threshold, limit - len(shots)
                     )
                 )
             except Exception as exc:
@@ -362,14 +503,46 @@ class VideoDBService:
         return self._shots_from_result(result)
 
     def _search_exported_video(
-        self, video_id: str, query: str, score_threshold: float, limit: int
+        self,
+        video_id: str,
+        query: str,
+        score_threshold: float,
+        limit: int,
+        scene_index_id: str | None = None,
     ) -> list[dict[str, Any]]:
         video = self.collection().get_video(video_id)
-        try:
-            result = video.search(query=query, score_threshold=score_threshold, result_threshold=limit)
-        except TypeError:
-            result = video.search(query)
-        return self._shots_from_result(result)
+        attempts: list[Callable[[], Any]] = []
+        if scene_index_id:
+            attempts.append(
+                lambda: video.search(
+                    query=query,
+                    search_type="semantic",
+                    index_type="scene",
+                    scene_index_id=scene_index_id,
+                    score_threshold=score_threshold,
+                    result_threshold=limit,
+                )
+            )
+        attempts.extend(
+            [
+                lambda: video.search(
+                    query=query,
+                    score_threshold=score_threshold,
+                    result_threshold=limit,
+                ),
+                lambda: video.search(query),
+            ]
+        )
+        last_error: Exception | None = None
+        for attempt in attempts:
+            try:
+                return self._shots_from_result(attempt())
+            except TypeError as exc:
+                last_error = exc
+                continue
+        if last_error:
+            raise last_error
+        return []
 
     @staticmethod
     def _shots_from_result(result: Any) -> list[dict[str, Any]]:
@@ -441,4 +614,3 @@ class VideoDBService:
             raise RuntimeError("VideoDB WebSocket object does not expose stream() or receive().")
         async for event in stream:
             yield event
-

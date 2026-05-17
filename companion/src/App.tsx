@@ -1,4 +1,4 @@
-import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
@@ -19,7 +19,14 @@ import {
   VolumeX
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { createSession, getEvents, getStatus, liveUrl, postClientEvent } from "./api";
+import {
+  createSession,
+  getEvents,
+  getStatus,
+  liveUrl,
+  postClientEvent,
+  postWindowCaptureSegment
+} from "./api";
 import { tauriCapture } from "./capture";
 import type {
   ApiStatus,
@@ -33,10 +40,23 @@ import type {
 
 type ShareMode = "screen" | "window";
 type MenuName = "source" | "mic" | null;
+const WINDOW_SEGMENT_MS = 10_000;
 
 interface NativeSourceSelection {
   label: string;
   displaySurface?: string;
+}
+
+interface WindowCaptureRuntime {
+  sessionId: string;
+  sourceLabel: string;
+  sourceStream: MediaStream;
+  micStream: MediaStream | null;
+  recordingStream: MediaStream;
+  recorder: MediaRecorder | null;
+  stopped: boolean;
+  sequence: number;
+  loop: Promise<void> | null;
 }
 
 function groupTrack(group: ChannelGroupName): TrackName {
@@ -187,12 +207,20 @@ function isCameraLike(channel: PlainChannel): boolean {
   return value.includes("camera") || value.includes("webcam");
 }
 
+function stopMediaStream(stream: MediaStream | null | undefined) {
+  stream?.getTracks().forEach(track => track.stop());
+}
+
+function firstSupportedMimeType(): string | undefined {
+  const candidates = ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"];
+  return candidates.find(candidate => MediaRecorder.isTypeSupported(candidate));
+}
+
 export default function App() {
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [events, setEvents] = useState<ScreenAwareEvent[]>([]);
   const [channels, setChannels] = useState<PlainChannel[]>([]);
   const [handshake, setHandshake] = useState<SessionHandshake | null>(null);
-  const [issueText, setIssueText] = useState("");
   const [noteText, setNoteText] = useState("");
   const [shareMode, setShareMode] = useState<ShareMode>("screen");
   const [selectedDisplayId, setSelectedDisplayId] = useState("");
@@ -213,6 +241,8 @@ export default function App() {
     screen: false,
     system_audio: false
   });
+  const selectedWindowStreamRef = useRef<MediaStream | null>(null);
+  const windowCaptureRef = useRef<WindowCaptureRuntime | null>(null);
 
   const currentSessionId = handshake?.session_id ?? status?.current_session_id ?? null;
 
@@ -234,10 +264,6 @@ export default function App() {
     const matching = shareableDisplays.filter(channel => sourceMatches(channel, shareMode));
     return matching.length ? matching : shareableDisplays;
   }, [groupedChannels.display, shareMode]);
-  const hasModeSpecificDisplay = groupedChannels.display.some(channel =>
-    sourceMatches(channel, shareMode)
-  );
-
   const selectedDisplay =
     displayChoices.find(channel => channel.id === selectedDisplayId) ?? displayChoices[0] ?? null;
   const selectedMic =
@@ -264,14 +290,13 @@ export default function App() {
       : "Pick the app window to share."
     : shareMode === "screen"
       ? "Click Choose source to list available screens."
-      : "Use the native picker to choose a window, like a video call.";
+      : "Choose the app window to share, like a video call.";
   const sourceLabel =
     shareMode === "window"
       ? nativeSource?.label ?? "Choose window"
       : loadingSources
         ? "Looking for sources..."
         : friendlyChannel(selectedDisplay);
-  const windowCaptureBlocked = shareMode === "window";
 
   async function refresh() {
     const [nextStatus, nextEvents] = await Promise.all([getStatus(), getEvents(30)]);
@@ -391,13 +416,28 @@ export default function App() {
     setSelectedMicId(groupedChannels.mic[0]?.id ?? "");
   }, [groupedChannels.mic, selectedMicId]);
 
+  useEffect(() => {
+    return () => {
+      const runtime = windowCaptureRef.current;
+      if (runtime) {
+        runtime.stopped = true;
+        if (runtime.recorder?.state === "recording") {
+          runtime.recorder.stop();
+        }
+        stopMediaStream(runtime.recordingStream);
+        stopMediaStream(runtime.micStream);
+        stopMediaStream(runtime.sourceStream);
+      }
+      stopMediaStream(selectedWindowStreamRef.current);
+    };
+  }, []);
+
   async function prepareSession(): Promise<SessionHandshake> {
     if (handshake) {
       return handshake;
     }
     const result = await createSession({
       end_user_id: "local-developer",
-      issue_text: issueText || undefined,
       metadata: {
         companion: "tauri-react",
         share_mode: shareMode,
@@ -448,32 +488,46 @@ export default function App() {
     }
   }
 
-  async function pickNativeSource() {
+  async function pickNativeSource(): Promise<MediaStream | null> {
     setError(null);
     setOpenMenu(null);
     if (!navigator.mediaDevices?.getDisplayMedia) {
       setError("Native window picker is not available in this WebView. Use Full screen capture.");
-      return;
+      return null;
     }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: "window"
         },
-        audio: false
-      });
+        audio: systemAudioEnabled
+          ? ({
+              systemAudio: "include",
+              windowAudio: "system",
+              suppressLocalAudioPlayback: false
+            } as unknown as MediaTrackConstraints)
+          : false
+      } as DisplayMediaStreamOptions);
       const [track] = stream.getVideoTracks();
       const settings = track?.getSettings?.() ?? {};
       const label = track?.label?.trim() || "Selected window";
+      stopMediaStream(selectedWindowStreamRef.current);
+      selectedWindowStreamRef.current = stream;
+      track?.addEventListener("ended", () => {
+        if (windowCaptureRef.current?.sourceStream === stream) {
+          void stopCapture();
+        }
+      });
       setNativeSource({
         label,
         displaySurface: typeof settings.displaySurface === "string" ? settings.displaySurface : undefined
       });
-      stream.getTracks().forEach(item => item.stop());
-      setError("Window selected with the native picker. VideoDB capture SDK currently streams display channels only; use Full screen to stream to VideoDB.");
+      return stream;
     } catch (reason) {
       setNativeSource(null);
+      selectedWindowStreamRef.current = null;
       setError(reason instanceof Error ? reason.message : String(reason));
+      return null;
     }
   }
 
@@ -497,14 +551,179 @@ export default function App() {
     await handleLoadSources("mic");
   }
 
+  async function ensureWindowStream(): Promise<MediaStream> {
+    const current = selectedWindowStreamRef.current;
+    if (current?.getVideoTracks().some(track => track.readyState === "live")) {
+      return current;
+    }
+    const picked = await pickNativeSource();
+    if (!picked) {
+      throw new Error("Choose a window before starting capture.");
+    }
+    return picked;
+  }
+
+  async function recordWindowSegment(runtime: WindowCaptureRuntime): Promise<void> {
+    if (!window.MediaRecorder) {
+      throw new Error("MediaRecorder is not available in this WebView.");
+    }
+    const chunks: BlobPart[] = [];
+    const mimeType = firstSupportedMimeType();
+    const recorder = new MediaRecorder(
+      runtime.recordingStream,
+      mimeType ? { mimeType } : undefined
+    );
+    runtime.recorder = recorder;
+    const startedAtMs = Date.now();
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (recorder.state === "recording") {
+          recorder.stop();
+        }
+      }, WINDOW_SEGMENT_MS);
+
+      function settle(callback: () => void) {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        window.clearTimeout(timer);
+        runtime.recorder = null;
+        callback();
+      }
+
+      recorder.addEventListener("dataavailable", event => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener("error", event => {
+        const message =
+          event instanceof ErrorEvent && event.message
+            ? event.message
+            : "the WebView stopped recording the selected window";
+        settle(() => reject(new Error(`Window recorder failed: ${message}`)));
+      });
+      recorder.addEventListener("stop", () => {
+        const endedAtMs = Date.now();
+        const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+        const sequence = runtime.sequence;
+        runtime.sequence += 1;
+        settle(() => {
+          if (!storeCapture || blob.size === 0) {
+            resolve();
+            return;
+          }
+          postWindowCaptureSegment({
+            sessionId: runtime.sessionId,
+            sequence,
+            sourceLabel: runtime.sourceLabel,
+            containsAudio: runtime.recordingStream.getAudioTracks().length > 0,
+            storeCapture,
+            startedAtMs,
+            endedAtMs,
+            blob
+          })
+            .then(() => resolve())
+            .catch(reason => reject(reason instanceof Error ? reason : new Error(String(reason))));
+        });
+      });
+      recorder.start();
+    });
+  }
+
+  async function runWindowCaptureLoop(runtime: WindowCaptureRuntime) {
+    while (!runtime.stopped) {
+      await recordWindowSegment(runtime);
+    }
+  }
+
+  async function startWindowCapture() {
+    const session = await prepareSession();
+    const sourceStream = await ensureWindowStream();
+    const sourceVideoTracks = sourceStream
+      .getVideoTracks()
+      .filter(track => track.readyState === "live");
+    if (!sourceVideoTracks.length) {
+      throw new Error("The selected window stream ended. Choose the window again.");
+    }
+    const micStream = micEnabled
+      ? await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null)
+      : null;
+    const recordingStream = new MediaStream([
+      ...sourceVideoTracks,
+      ...(systemAudioEnabled ? sourceStream.getAudioTracks() : []),
+      ...(micStream?.getAudioTracks() ?? [])
+    ]);
+    const sourceLabel = nativeSource?.label ?? sourceVideoTracks[0]?.label ?? "Selected window";
+    const runtime: WindowCaptureRuntime = {
+      sessionId: session.session_id,
+      sourceLabel,
+      sourceStream,
+      micStream,
+      recordingStream,
+      recorder: null,
+      stopped: false,
+      sequence: 0,
+      loop: null
+    };
+    windowCaptureRef.current = runtime;
+    setPausedTracks({ mic: false, screen: false, system_audio: false });
+    setCapturing(true);
+    setOverlayCollapsed(false);
+    await tauriCapture.setCompactWindow(true).catch(() => undefined);
+    await postClientEvent({
+      session_id: session.session_id,
+      event: "capture.started",
+      data: {
+        capture_path: "browser_window_mediarecorder",
+        share_mode: "window",
+        display: sourceLabel,
+        segment_ms: WINDOW_SEGMENT_MS,
+        mic: micEnabled,
+        system_audio: systemAudioEnabled && sourceStream.getAudioTracks().length > 0,
+        store: storeCapture,
+        text: `Started window capture for ${sourceLabel}.`
+      }
+    });
+    runtime.loop = runWindowCaptureLoop(runtime).catch(reason => {
+      runtime.stopped = true;
+      setError(reason instanceof Error ? reason.message : String(reason));
+      setCapturing(false);
+      void tauriCapture.setCompactWindow(false).catch(() => undefined);
+    });
+    await refresh();
+  }
+
+  async function stopWindowCapture() {
+    const runtime = windowCaptureRef.current;
+    if (!runtime) {
+      return;
+    }
+    runtime.stopped = true;
+    if (runtime.recorder?.state === "recording") {
+      runtime.recorder.stop();
+    }
+    await runtime.loop?.catch(() => undefined);
+    stopMediaStream(runtime.recordingStream);
+    stopMediaStream(runtime.micStream);
+    stopMediaStream(runtime.sourceStream);
+    if (selectedWindowStreamRef.current === runtime.sourceStream) {
+      selectedWindowStreamRef.current = null;
+    }
+    windowCaptureRef.current = null;
+    setNativeSource(null);
+  }
+
   async function startCapture() {
     setBusy(true);
     setError(null);
     try {
       if (shareMode === "window") {
-        throw new Error(
-          "Window-specific streaming is not exposed by the installed VideoDB capture SDK. Use Full screen to stream to VideoDB, or keep Window mode only as a native picker preview."
-        );
+        await startWindowCapture();
+        return;
       }
       const { session, available } = await loadSources();
       const displays = available.filter(channel => channel.group === "display" && !isCameraLike(channel));
@@ -561,12 +780,17 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      await tauriCapture.stop();
+      const stoppedWindow = Boolean(windowCaptureRef.current);
+      if (stoppedWindow) {
+        await stopWindowCapture();
+      } else {
+        await tauriCapture.stop();
+      }
       if (currentSessionId) {
         await postClientEvent({
           session_id: currentSessionId,
           event: "capture.stopped",
-          data: {}
+          data: { capture_path: stoppedWindow ? "browser_window_mediarecorder" : "videodb_native" }
         });
       }
       setCapturing(false);
@@ -584,6 +808,20 @@ export default function App() {
     const track = groupTrack(group);
     const paused = pausedTracks[track];
     try {
+      const runtime = windowCaptureRef.current;
+      if (runtime) {
+        const tracks =
+          track === "screen"
+            ? runtime.sourceStream.getVideoTracks()
+            : track === "mic"
+              ? runtime.micStream?.getAudioTracks() ?? []
+              : runtime.sourceStream.getAudioTracks();
+        tracks.forEach(item => {
+          item.enabled = paused;
+        });
+        setPausedTracks(previous => ({ ...previous, [track]: !paused }));
+        return;
+      }
       if (paused) {
         await tauriCapture.resumeTracks([track]);
       } else {
@@ -834,12 +1072,6 @@ export default function App() {
           )}
         </div>
 
-        {channels.length > 0 && shareMode === "window" && !hasModeSpecificDisplay && (
-          <div className="inline-note">
-            Native window picking is available, but the installed VideoDB capture SDK exposes display channels only. Use Full screen to stream into VideoDB.
-          </div>
-        )}
-
         <div className="recorder-row picker-row" data-no-drag="true">
           {micEnabled ? <Mic size={24} /> : <MicOff size={24} />}
           <div>
@@ -925,9 +1157,9 @@ export default function App() {
           </div>
         )}
 
-        <button className="start-recording" onClick={() => void startCapture()} disabled={busy || windowCaptureBlocked}>
+        <button className="start-recording" onClick={() => void startCapture()} disabled={busy}>
           {busy ? <Loader2 className="spin" size={20} /> : <Play size={20} />}
-          {shareMode === "window" ? "Use full screen to share" : "Start sharing"}
+          Start sharing
         </button>
 
         <footer className="card-status">

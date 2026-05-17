@@ -65,8 +65,9 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 1. Open your target app in a browser or desktop window.
 2. Start the Screen-Aware backend.
 3. Open the Tauri companion.
-4. Enter the issue in the Issue field. Example: `The Flappy page is running but the canvas is blank after I press Start.`
+4. Decide whether to share a full screen or a single app window.
 5. Choose Full screen or Window, choose the source, and select microphone/system-sound options.
+   Window mode opens the native OS picker, the same style of picker used by video-call apps.
 6. Press Start sharing and grant OS permissions.
 7. Reproduce the issue while speaking or typing what you expect.
 8. The companion shrinks into a top recorder bar. Type short notes there or keep speaking while your CLI agent uses the Screen-Aware MCP tools.
@@ -75,11 +76,12 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 
 1. The companion calls `POST /api/sessions`.
 2. Backend creates a VideoDB CaptureSession and returns a client token.
-3. Rust initializes the VideoDB capture binary with the token.
-4. Rust lists capture channels and starts recording selected channel IDs.
-5. VideoDB emits lifecycle events.
-6. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams.
-7. The MCP server searches those indexes when an agent calls a tool.
+3. Full screen mode initializes the VideoDB capture binary with the token.
+4. Full screen mode lists capture channels and starts recording selected channel IDs.
+5. Window mode uses the native WebView window picker, records WebM segments locally, and uploads each segment to VideoDB.
+6. VideoDB emits lifecycle events for RTStreams, while the backend records uploaded window segment events.
+7. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
+8. The MCP server searches those indexes when an agent calls a tool.
 
 ## Stop Capture
 

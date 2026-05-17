@@ -9,9 +9,11 @@ flowchart LR
     UI["Tauri React Companion"] -->|"POST /api/sessions"| API["FastAPI Backend"]
     API -->|"create CaptureSession"| VDB["VideoDB"]
     API -->|"client_token"| UI
-    UI -->|"Tauri invoke"| RUST["Rust Capture Bridge"]
+    UI -->|"Full screen: Tauri invoke"| RUST["Rust Capture Bridge"]
     RUST -->|"videodb_recorder protocol"| BIN["VideoDB native capture binary"]
     BIN -->|"screen/mic/system streams"| VDB
+    UI -->|"Window: getDisplayMedia + WebM segments"| API
+    API -->|"upload + index window segments"| VDB
     VDB -->|"websocket or webhook events"| API
     API -->|"start_transcript, index_audio, index_visuals"| VDB
     API -->|"state/events"| STORE[".screen-aware JSON/JSONL"]
@@ -38,12 +40,13 @@ flowchart LR
 
 - `src/screen_aware/api.py` runs FastAPI on `127.0.0.1:8787` by default.
 - `POST /api/sessions` creates a real VideoDB CaptureSession and returns a client token to the companion.
+- `POST /api/window-capture/segments` accepts native-window WebM segments from the companion and queues VideoDB upload/indexing.
 - `POST /webhooks/videodb` and the backend websocket listener normalize VideoDB events into local state.
 - `GET /api/status`, `GET /api/events`, and `POST /api/query` provide local control-plane inspection.
 
 ### VideoDB Service
 
-- `src/screen_aware/videodb_service.py` calls `videodb.connect`, creates CaptureSessions, generates client tokens, opens VideoDB websocket listeners, starts transcripts, starts audio indexing, starts visual indexing, and searches RTStreams.
+- `src/screen_aware/videodb_service.py` calls `videodb.connect`, creates CaptureSessions, generates client tokens, opens VideoDB websocket listeners, uploads selected-window segments, starts transcripts, starts audio indexing, starts visual indexing, and searches RTStreams plus uploaded window media.
 - SDK compatibility wrappers are intentionally thin; they call the real VideoDB SDK and only adapt minor signature differences.
 
 ### Local State
@@ -63,11 +66,12 @@ flowchart LR
 1. Backend starts and opens a VideoDB websocket listener.
 2. Companion requests a new session from `POST /api/sessions`.
 3. Backend creates a VideoDB CaptureSession and client token.
-4. Companion initializes the Rust capture bridge with the client token.
+4. In Full screen mode, companion initializes the Rust capture bridge with the client token.
 5. Rust bridge asks for screen and microphone permissions, lists channel IDs, and starts recording with selected channels.
-6. VideoDB emits `capture_session.active`.
-7. Backend starts transcript, audio indexing, and visual indexing for the active RTStreams.
-8. MCP tools search the indexed RTStreams and return evidence to the CLI agent.
+6. In Window mode, companion opens the native window picker, records WebM segments, and posts them to the backend.
+7. VideoDB emits `capture_session.active` for RTStreams, and the backend records window segment lifecycle events.
+8. Backend starts transcript, audio indexing, and visual indexing for active RTStreams and uploaded window segments.
+9. MCP tools search the indexed RTStreams/window segments and return evidence to the CLI agent.
 
 ## Security Boundaries
 
@@ -75,4 +79,3 @@ flowchart LR
 - MCP clients should pass `SCREEN_AWARE_ENV_FILE` and `SCREEN_AWARE_DATA_DIR`, not the key itself.
 - `.screen-aware/`, `.env`, Tauri targets, and dependency folders are ignored.
 - The MCP tools are read-only and do not execute code or mutate the developer project.
-

@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import asynccontextmanager
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import (
+    BackgroundTasks,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -121,6 +131,11 @@ class QueryRequest(BaseModel):
     score_threshold: float = Field(default=0.35, ge=0, le=1)
 
 
+def safe_path_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
+    return cleaned.strip(".-") or "unknown"
+
+
 def public_state(session: dict[str, Any] | None = None) -> dict[str, Any]:
     state = store.read_state()
     current = session if session is not None else store.get_session()
@@ -176,6 +191,81 @@ async def client_event(request: ClientEventRequest) -> dict[str, Any]:
         store.upsert_session(request.session_id, client_status=status_value)
     await live_clients.broadcast({"type": "status", "state": public_state()})
     return {"ok": True}
+
+
+@app.post("/api/window-capture/segments")
+async def window_capture_segment(
+    background_tasks: BackgroundTasks,
+    session_id: str = Form(...),
+    sequence: int = Form(...),
+    source_label: str = Form("Selected window"),
+    contains_audio: bool = Form(False),
+    store_capture: bool = Form(True),
+    started_at_ms: int | None = Form(None),
+    ended_at_ms: int | None = Form(None),
+    segment: UploadFile = File(...),
+) -> dict[str, Any]:
+    if sequence < 0:
+        raise HTTPException(status_code=400, detail="sequence must be non-negative")
+
+    session_dir = settings.data_dir / "window-captures" / safe_path_part(session_id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    file_path = session_dir / f"segment-{sequence:04d}.webm"
+    bytes_written = 0
+    with file_path.open("wb") as handle:
+        while chunk := await segment.read(1024 * 1024):
+            bytes_written += len(chunk)
+            handle.write(chunk)
+    queued = store_capture and bytes_written > 0
+
+    store.record_client_event(
+        session_id,
+        {
+            "event": "window.segment.received",
+            "data": {
+                "sequence": sequence,
+                "source_label": source_label,
+                "file_path": str(file_path),
+                "bytes": bytes_written,
+                "contains_audio": contains_audio,
+                "store": store_capture,
+                "started_at_ms": started_at_ms,
+                "ended_at_ms": ended_at_ms,
+                "text": (
+                    f"Received window capture segment {sequence} from {source_label}; "
+                    + ("VideoDB indexing queued." if queued else "not queued for storage.")
+                ),
+            },
+        },
+    )
+    store.append_session_item(
+        session_id,
+        "window_segments",
+        {
+            "sequence": sequence,
+            "source_label": source_label,
+            "file_path": str(file_path),
+            "bytes": bytes_written,
+            "contains_audio": contains_audio,
+            "store": store_capture,
+            "started_at_ms": started_at_ms,
+            "ended_at_ms": ended_at_ms,
+        },
+    )
+    if queued:
+        background_tasks.add_task(
+            videodb_service.ingest_window_capture_segment,
+            session_id=session_id,
+            file_path=file_path,
+            sequence=sequence,
+            source_label=source_label,
+            contains_audio=contains_audio,
+            started_at_ms=started_at_ms,
+            ended_at_ms=ended_at_ms,
+        )
+        store.upsert_session(session_id, indexing_status="window_segment_queued")
+    await live_clients.broadcast({"type": "status", "state": public_state()})
+    return {"ok": True, "path": str(file_path), "bytes": bytes_written, "queued": queued}
 
 
 @app.post("/api/query")

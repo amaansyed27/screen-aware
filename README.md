@@ -44,7 +44,8 @@ $env:SCREEN_AWARE_DEV_PORT = "5300"
 npm run tauri:dev
 ```
 
-In the companion, select Screen, Mic, and optionally System, type the issue, then press Start.
+In the companion, choose Full screen or Window, choose Mic and optionally System sound, then press Start.
+Window capture uses the native OS picker and uploads searchable segments to VideoDB.
 
 ## What It Builds
 
