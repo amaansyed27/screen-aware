@@ -77,6 +77,107 @@ function sourceMatches(channel: PlainChannel, mode: ShareMode): boolean {
   return false;
 }
 
+function channelSignature(items: PlainChannel[]): string {
+  return items.map(channel => `${channel.group}:${channel.id}`).sort().join("|");
+}
+
+function rawChannelToPlain(value: unknown): PlainChannel | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const id =
+    typeof record.channel_id === "string"
+      ? record.channel_id
+      : typeof record.channelId === "string"
+        ? record.channelId
+        : typeof record.id === "string"
+          ? record.id
+          : "";
+  if (!id) {
+    return null;
+  }
+  const type = record.type === "video" ? "video" : "audio";
+  const name =
+    typeof record.name === "string"
+      ? record.name
+      : typeof record.channel_name === "string"
+        ? record.channel_name
+        : id;
+  const idLower = id.toLowerCase();
+  const nameLower = name.toLowerCase();
+  const group: ChannelGroupName =
+    idLower.startsWith("system_audio")
+      ? "system_audio"
+      : idLower.startsWith("display") || type === "video"
+        ? "display"
+        : "mic";
+  const source_kind: PlainChannel["source_kind"] =
+    group !== "display"
+      ? "unknown"
+      : idLower.includes("window") || nameLower.includes("window")
+        ? "window"
+        : idLower.includes("display") ||
+            idLower.includes("screen") ||
+            nameLower.includes("display") ||
+            nameLower.includes("screen") ||
+            nameLower.includes("monitor")
+          ? "screen"
+          : "unknown";
+  return {
+    id,
+    name,
+    type,
+    group,
+    source_kind,
+    store: true,
+    is_primary: false
+  };
+}
+
+function channelsFromPayload(payload: unknown): PlainChannel[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const channels = (payload as Record<string, unknown>).channels;
+  if (!Array.isArray(channels)) {
+    return [];
+  }
+  return channels.map(rawChannelToPlain).filter((channel): channel is PlainChannel => Boolean(channel));
+}
+
+function channelsFromStatus(status: ApiStatus | null): PlainChannel[] {
+  const session = status?.session;
+  const clientEvents = session?.client_events;
+  if (!Array.isArray(clientEvents)) {
+    return [];
+  }
+  for (const event of [...clientEvents].reverse()) {
+    if (!event || typeof event !== "object") {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    if (record.event === "channel-list") {
+      return channelsFromPayload(record.data);
+    }
+  }
+  return [];
+}
+
+function channelsFromEvents(events: ScreenAwareEvent[]): PlainChannel[] {
+  for (const event of [...events].reverse()) {
+    if (event.event === "channel-list") {
+      return channelsFromPayload(event.data);
+    }
+  }
+  return [];
+}
+
+function isCameraLike(channel: PlainChannel): boolean {
+  const value = `${channel.id} ${channel.name}`.toLowerCase();
+  return value.includes("camera") || value.includes("webcam");
+}
+
 export default function App() {
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [events, setEvents] = useState<ScreenAwareEvent[]>([]);
@@ -116,8 +217,9 @@ export default function App() {
   }, [channels]);
 
   const displayChoices = useMemo(() => {
-    const matching = groupedChannels.display.filter(channel => sourceMatches(channel, shareMode));
-    return matching.length ? matching : groupedChannels.display;
+    const shareableDisplays = groupedChannels.display.filter(channel => !isCameraLike(channel));
+    const matching = shareableDisplays.filter(channel => sourceMatches(channel, shareMode));
+    return matching.length ? matching : shareableDisplays;
   }, [groupedChannels.display, shareMode]);
   const hasModeSpecificDisplay = groupedChannels.display.some(channel =>
     sourceMatches(channel, shareMode)
@@ -238,6 +340,20 @@ export default function App() {
   }, [currentSessionId]);
 
   useEffect(() => {
+    const savedChannels = channelsFromStatus(status);
+    if (savedChannels.length && channelSignature(savedChannels) !== channelSignature(channels)) {
+      setChannels(savedChannels);
+    }
+  }, [channels, status]);
+
+  useEffect(() => {
+    const savedChannels = channelsFromEvents(events);
+    if (savedChannels.length && channelSignature(savedChannels) !== channelSignature(channels)) {
+      setChannels(savedChannels);
+    }
+  }, [channels, events]);
+
+  useEffect(() => {
     if (selectedDisplayId && displayChoices.some(channel => channel.id === selectedDisplayId)) {
       return;
     }
@@ -290,12 +406,46 @@ export default function App() {
     }
   }
 
+  async function handleLoadSources(menuToOpen: MenuName = "source") {
+    try {
+      const { available } = await loadSources();
+      const shareableDisplays = available.filter(
+        channel => channel.group === "display" && !isCameraLike(channel)
+      );
+      if (menuToOpen) {
+        setOpenMenu(menuToOpen);
+      }
+      if (!shareableDisplays.length) {
+        setError("No screen or window sources were returned. Check screen capture permission and retry.");
+      }
+    } catch (reason) {
+      setOpenMenu(null);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  async function openSourcePicker() {
+    if (displayChoices.length) {
+      setOpenMenu(openMenu === "source" ? null : "source");
+      return;
+    }
+    await handleLoadSources("source");
+  }
+
+  async function openMicPicker() {
+    if (groupedChannels.mic.length) {
+      setOpenMenu(openMenu === "mic" ? null : "mic");
+      return;
+    }
+    await handleLoadSources("mic");
+  }
+
   async function startCapture() {
     setBusy(true);
     setError(null);
     try {
       const { session, available } = await loadSources();
-      const displays = available.filter(channel => channel.group === "display");
+      const displays = available.filter(channel => channel.group === "display" && !isCameraLike(channel));
       const matchingDisplays = displays.filter(channel => sourceMatches(channel, shareMode));
       const display =
         matchingDisplays.find(channel => channel.id === selectedDisplayId) ??
@@ -574,18 +724,18 @@ export default function App() {
             <button
               className="picker-value"
               type="button"
-              onClick={() => setOpenMenu(openMenu === "source" ? null : "source")}
+              onClick={() => void openSourcePicker()}
             >
-              {friendlyChannel(selectedDisplay)}
+              {loadingSources ? "Looking for sources..." : friendlyChannel(selectedDisplay)}
             </button>
           </div>
           <button
             className="picker-chevron"
             type="button"
             aria-label="Open source menu"
-            onClick={() => setOpenMenu(openMenu === "source" ? null : "source")}
+            onClick={() => void openSourcePicker()}
           >
-            <ChevronDown size={18} />
+            {loadingSources ? <Loader2 className="spin" size={18} /> : <ChevronDown size={18} />}
           </button>
           {openMenu === "source" && (
             <div className={displayChoices.length ? "picker-menu" : "picker-menu empty"} role="menu">
@@ -603,7 +753,9 @@ export default function App() {
                   </button>
                 ))
               ) : (
-                <div className="picker-empty">Choose source first</div>
+                <div className="picker-empty">
+                  {loadingSources ? "Looking for screens and windows..." : "No sources listed yet. Click Refresh sources."}
+                </div>
               )}
             </div>
           )}
@@ -623,7 +775,7 @@ export default function App() {
               className="picker-value"
               disabled={!micEnabled}
               type="button"
-              onClick={() => setOpenMenu(openMenu === "mic" ? null : "mic")}
+              onClick={() => void openMicPicker()}
             >
               {selectedMic ? friendlyChannel(selectedMic) : "Default microphone"}
             </button>
@@ -675,7 +827,7 @@ export default function App() {
           </button>
         </div>
 
-        <button className="secondary-action" onClick={() => void loadSources()} disabled={loadingSources || busy}>
+        <button className="secondary-action" onClick={() => void handleLoadSources("source")} disabled={loadingSources || busy}>
           {loadingSources ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
           {displayChoices.length ? "Refresh sources" : "Choose source"}
         </button>
