@@ -475,7 +475,7 @@ input:focus-visible {
   min-height: 100vh;
   display: grid;
   align-items: start;
-  padding: 18px;
+  padding: 12px;
   background: transparent;
 }
 
@@ -484,11 +484,11 @@ input:focus-visible {
   margin: 0 auto;
   min-height: 76px;
   display: grid;
-  grid-template-columns: 118px 150px minmax(260px, 1fr) 52px;
+  grid-template-columns: 118px 150px minmax(260px, 1fr) 108px;
   align-items: center;
   gap: 10px;
-  border: 1.5px solid #121212;
-  border-radius: 32px;
+  border: 1px solid #d8d4cc;
+  border-radius: 34px;
   background: #fffdfa;
   padding: 10px;
   cursor: grab;
@@ -496,6 +496,12 @@ input:focus-visible {
 
 .floating-toolbar:active {
   cursor: grabbing;
+}
+
+.floating-toolbar.collapsed {
+  width: min(100%, 336px);
+  min-height: 70px;
+  grid-template-columns: minmax(0, 1fr) 108px;
 }
 
 .recording-pill {
@@ -508,7 +514,7 @@ input:focus-visible {
   background: #121212;
   color: #fffdfa;
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 780;
 }
 
 .record-dot {
@@ -525,12 +531,19 @@ input:focus-visible {
 
 .toolbar-buttons button,
 .toolbar-note button,
+.toolbar-collapse,
 .toolbar-stop {
   width: 48px;
   height: 48px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.toolbar-right {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
 }
 
 .toolbar-note {
@@ -551,9 +564,15 @@ input:focus-visible {
 }
 
 .toolbar-note button,
+.toolbar-collapse,
 .toolbar-stop {
   background: #121212;
   color: #fffdfa;
+}
+
+.toolbar-collapse {
+  background: #f2f0ed;
+  color: #121212;
 }
 
 .toolbar-stop {
@@ -591,6 +610,10 @@ input:focus-visible {
 
   .floating-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .floating-toolbar.collapsed {
+    grid-template-columns: minmax(0, 1fr) 108px;
   }
 
   .toolbar-buttons {

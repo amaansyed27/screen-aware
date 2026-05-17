@@ -674,19 +674,27 @@ async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkRe
 }
 
 #[tauri::command]
+async fn set_overlay_collapsed(app: AppHandle, collapsed: bool) -> CaptureResult<OkResponse> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
+    window.set_always_on_top(true)?;
+    let (width, height) = if collapsed {
+        (360.0, 94.0)
+    } else {
+        (940.0, 190.0)
+    };
+    window.set_size(Size::Logical(LogicalSize { width, height }))?;
+    Ok(OkResponse { ok: true })
+}
+
+#[tauri::command]
 async fn window_control(app: AppHandle, action: String) -> CaptureResult<OkResponse> {
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
     match action.as_str() {
         "minimize" => window.minimize()?,
-        "maximize" => {
-            if window.is_maximized()? {
-                window.unmaximize()?;
-            } else {
-                window.maximize()?;
-            }
-        }
         "close" => window.close()?,
         _ => {
             return Err(CaptureError::Message(format!(
@@ -719,6 +727,7 @@ pub fn run() {
             stop_capture,
             shutdown_capture,
             set_compact_window,
+            set_overlay_collapsed,
             window_control,
             window_start_dragging
         ])

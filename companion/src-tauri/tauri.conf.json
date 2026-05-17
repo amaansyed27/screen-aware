@@ -18,7 +18,7 @@
         "minWidth": 380,
         "minHeight": 580,
         "decorations": false,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "shadow": false,
         "transparent": true,
         "backgroundColor": "#00000000"

@@ -2,8 +2,9 @@ import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState 
 import {
   AlertCircle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
-  Maximize2,
   Mic,
   MicOff,
   Minus,
@@ -93,6 +94,7 @@ export default function App() {
   const [loadingSources, setLoadingSources] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
+  const [overlayCollapsed, setOverlayCollapsed] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [pausedTracks, setPausedTracks] = useState<Record<TrackName, boolean>>({
     mic: false,
@@ -287,6 +289,7 @@ export default function App() {
         store: storeCapture
       });
       setCapturing(true);
+      setOverlayCollapsed(false);
       await tauriCapture.setCompactWindow(true).catch(() => undefined);
       await postClientEvent({
         session_id: session.session_id,
@@ -321,6 +324,7 @@ export default function App() {
         });
       }
       setCapturing(false);
+      setOverlayCollapsed(false);
       await tauriCapture.setCompactWindow(false).catch(() => undefined);
       await refresh();
     } catch (reason) {
@@ -360,8 +364,13 @@ export default function App() {
     await refresh();
   }
 
-  async function windowControl(action: "minimize" | "maximize" | "close") {
+  async function windowControl(action: "minimize" | "close") {
     await invoke("window_control", { action });
+  }
+
+  async function setCollapsed(nextCollapsed: boolean) {
+    setOverlayCollapsed(nextCollapsed);
+    await invoke("set_overlay_collapsed", { collapsed: nextCollapsed });
   }
 
   function selectSource(channelId: string) {
@@ -382,10 +391,6 @@ export default function App() {
     if (target.closest("button, input, textarea, [data-no-drag='true']")) {
       return;
     }
-    if (event.detail === 2) {
-      await windowControl("maximize");
-      return;
-    }
     await invoke("window_start_dragging");
   }
 
@@ -393,7 +398,7 @@ export default function App() {
     return (
       <main className="floating-mode">
         <section
-          className="floating-toolbar"
+          className={overlayCollapsed ? "floating-toolbar collapsed" : "floating-toolbar"}
           aria-label="Active Screen-Aware capture"
           onMouseDown={event => void beginWindowDrag(event)}
         >
@@ -402,50 +407,61 @@ export default function App() {
             <span>Sharing</span>
           </div>
 
-          <div className="toolbar-buttons" data-no-drag="true">
-            <button title="Pause or resume screen" onClick={() => void toggleTrack("display")}>
-              {pausedTracks.screen ? <Play size={18} /> : <Monitor size={18} />}
-            </button>
+          {!overlayCollapsed && (
+            <>
+              <div className="toolbar-buttons" data-no-drag="true">
+                <button title="Pause or resume screen" onClick={() => void toggleTrack("display")}>
+                  {pausedTracks.screen ? <Play size={18} /> : <Monitor size={18} />}
+                </button>
+                <button
+                  title="Pause or resume microphone"
+                  onClick={() => void toggleTrack("mic")}
+                  disabled={!micEnabled}
+                >
+                  {pausedTracks.mic || !micEnabled ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+                <button
+                  title="Pause or resume system sound"
+                  onClick={() => void toggleTrack("system_audio")}
+                  disabled={!systemAudioEnabled}
+                >
+                  {pausedTracks.system_audio || !systemAudioEnabled ? (
+                    <VolumeX size={18} />
+                  ) : (
+                    <Volume2 size={18} />
+                  )}
+                </button>
+              </div>
+
+              <form className="toolbar-note" data-no-drag="true" onSubmit={event => void submitNote(event)}>
+                <input
+                  value={noteText}
+                  onChange={event => setNoteText(event.target.value)}
+                  placeholder="Describe what the agent should inspect..."
+                  aria-label="Describe what the agent should inspect"
+                />
+                <button type="submit" disabled={!noteText.trim()} title="Send note">
+                  <Send size={16} />
+                </button>
+              </form>
+            </>
+          )}
+
+          <div className="toolbar-right" data-no-drag="true">
             <button
-              title="Pause or resume microphone"
-              onClick={() => void toggleTrack("mic")}
-              disabled={!micEnabled}
+              className="toolbar-collapse"
+              type="button"
+              title={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
+              aria-label={overlayCollapsed ? "Expand overlay" : "Collapse overlay"}
+              onClick={() => void setCollapsed(!overlayCollapsed)}
             >
-              {pausedTracks.mic || !micEnabled ? <MicOff size={18} /> : <Mic size={18} />}
+              {overlayCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             </button>
-            <button
-              title="Pause or resume system sound"
-              onClick={() => void toggleTrack("system_audio")}
-              disabled={!systemAudioEnabled}
-            >
-              {pausedTracks.system_audio || !systemAudioEnabled ? (
-                <VolumeX size={18} />
-              ) : (
-                <Volume2 size={18} />
-              )}
+
+            <button className="toolbar-stop" onClick={() => void stopCapture()} disabled={busy}>
+              <Square size={16} />
             </button>
           </div>
-
-          <form className="toolbar-note" data-no-drag="true" onSubmit={event => void submitNote(event)}>
-            <input
-              value={noteText}
-              onChange={event => setNoteText(event.target.value)}
-              placeholder="Describe what the agent should inspect..."
-              aria-label="Describe what the agent should inspect"
-            />
-            <button type="submit" disabled={!noteText.trim()} title="Send note">
-              <Send size={16} />
-            </button>
-          </form>
-
-          <button
-            className="toolbar-stop"
-            data-no-drag="true"
-            onClick={() => void stopCapture()}
-            disabled={busy}
-          >
-            <Square size={16} />
-          </button>
         </section>
         {error && (
           <div className="floating-error">
@@ -486,14 +502,6 @@ export default function App() {
               onClick={() => void windowControl("minimize")}
             >
               <Minus size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Maximize"
-              title="Maximize"
-              onClick={() => void windowControl("maximize")}
-            >
-              <Maximize2 size={14} />
             </button>
             <button
               type="button"
