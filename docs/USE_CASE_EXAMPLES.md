@@ -37,10 +37,23 @@ Use Screen-Aware live context to inspect whether keyboard focus, buttons, and ga
 
 ## Suggested Tool Order
 
+For live companion use:
+
+1. `screen_aware_watch_live_issue` with `mode=diagnose`
+2. Report what was observed and ask before editing
+3. If approved, inspect code and patch
+
+For live edit use:
+
+1. `screen_aware_watch_live_issue` with `mode=live_edit`
+2. Inspect the relevant files immediately
+3. Patch the smallest likely fix and verify
+
+For manual context lookup:
+
 1. `screen_aware_get_capture_status`
 2. `screen_aware_get_live_context`
 3. `screen_aware_analyze_screen_context`
 4. `screen_aware_query_workflow_history`
 
 Use `screen_aware_get_live_context` for the latest raw events. Use semantic search tools when the agent needs evidence matching a question.
-

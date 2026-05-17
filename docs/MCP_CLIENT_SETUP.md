@@ -211,6 +211,22 @@ Use this shape for clients that understand the common `mcpServers` JSON format:
 
 ## Useful Agent Prompt
 
+Normal diagnostic mode:
+
+```text
+Use Screen-Aware live. Watch while I show the bug, then tell me what you saw and ask before editing.
+```
+
+Live edit mode:
+
+```text
+Use Screen-Aware live edit. Watch while I reproduce the bug, then start fixing it.
+```
+
+The MCP server exposes `screen_aware_watch_live_issue` for these prompts. It keeps the tool call open while you demonstrate the issue, then returns visual/audio/user-note evidence to the agent. In diagnostic mode the agent should report and ask before changing files. In live edit mode the agent should immediately inspect and patch after the watch window.
+
+More explicit prompt for strict clients:
+
 ```text
 Use the Screen-Aware MCP tools before changing code. First call screen_aware_get_capture_status. Then call screen_aware_analyze_screen_context with my visible issue. Use the visual/audio evidence to identify the bug, inspect the relevant files, patch the smallest fix, and run the app's tests or build.
 ```

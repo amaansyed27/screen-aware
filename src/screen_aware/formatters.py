@@ -88,3 +88,49 @@ def context_markdown(payload: dict[str, Any]) -> str:
         lines.extend(f"- {warning}" for warning in warnings)
     return "\n".join(lines)
 
+
+def live_watch_markdown(payload: dict[str, Any]) -> str:
+    mode = payload.get("mode", "diagnose")
+    objective = payload.get("objective", "Watch live issue")
+    lines = [
+        f"# Screen-Aware Live Watch ({mode})",
+        "",
+        f"Objective: {objective}",
+        f"Watched: `{payload.get('watched_seconds', '?')}` seconds",
+    ]
+
+    session = payload.get("session") or {}
+    if session:
+        lines.append(f"Session `{session.get('session_id')}` status: `{session.get('status', 'unknown')}`")
+
+    instruction = payload.get("agent_instruction")
+    if instruction:
+        lines.extend(["", "## Agent Instruction", str(instruction)])
+
+    results = payload.get("videodb_results") or []
+    lines.extend(["", "## Semantic Matches"])
+    if results:
+        for item in results:
+            source = item.get("rtstream_id") or item.get("video_id") or "unknown"
+            start = item.get("start")
+            end = item.get("end")
+            text = item.get("text") or "(no text)"
+            lines.append(f"- `{source}` [{start} - {end}]: {text}")
+    else:
+        lines.append("- No semantic matches returned yet. Use live events below as primary evidence.")
+
+    recent = payload.get("recent_events") or []
+    lines.extend(["", "## Live Events Captured During Watch"])
+    if recent:
+        for event in recent:
+            label = event.get("channel") or event.get("event") or "event"
+            text = event.get("text") or "(no text)"
+            lines.append(f"- `{event.get('ts')}` `{label}`: {text}")
+    else:
+        lines.append("- No local events were captured during the watch window.")
+
+    warnings = payload.get("warnings") or []
+    if warnings:
+        lines.extend(["", "## Warnings"])
+        lines.extend(f"- {warning}" for warning in warnings)
+    return "\n".join(lines)

@@ -42,6 +42,18 @@ After the app is generated:
 Start Screen-Aware capture, reproduce one visible issue, then paste:
 
 ```text
+Use Screen-Aware live. Watch while I show the bug, then tell me what you saw and ask before editing.
+```
+
+For live edit mode:
+
+```text
+Use Screen-Aware live edit. Watch while I reproduce the bug, then start fixing it.
+```
+
+For a stricter diagnostic run:
+
+```text
 Use the Screen-Aware MCP tools before editing.
 
 First call screen_aware_get_capture_status. Then call screen_aware_analyze_screen_context with this query:
@@ -57,4 +69,3 @@ Use that evidence to inspect the code. Fix only the smallest set of files needed
 - `After changing difficulty in Settings, Flappy still behaves like easy mode.`
 - `Tic Tac Toe shows a draw even when X clearly has three in a row.`
 - `The mobile layout overlaps the canvas controls and I cannot press restart.`
-

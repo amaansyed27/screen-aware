@@ -51,6 +51,8 @@ class EventStore:
                 "mcp_agent": None,
                 "mcp_last_seen": None,
                 "mcp_tool": None,
+                "mcp_live_mode": None,
+                "mcp_live_objective": None,
             },
         }
 

@@ -75,6 +75,7 @@ C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.m
 
 Tools:
 
+- `screen_aware_watch_live_issue`: keeps the MCP call open while you demonstrate a bug, then returns live visual/audio/user-note evidence. Use `diagnose` mode to ask before edits or `live_edit` mode to proceed into fixes.
 - `screen_aware_analyze_screen_context`: semantic visual/audio search plus recent live events.
 - `screen_aware_query_workflow_history`: semantic search over previous captured workflow context.
 - `screen_aware_get_live_context`: recent transcript, visual, audio, and lifecycle events without semantic search.
@@ -100,6 +101,16 @@ The safest shared environment block is:
 ```
 
 That lets MCP clients start the server without storing the VideoDB key in their config. `SCREEN_AWARE_AGENT_NAME` is what the companion shows as the connected coding agent.
+
+Simple Codex prompts:
+
+```text
+Use Screen-Aware live. Watch while I show the bug, then tell me what you saw and ask before editing.
+```
+
+```text
+Use Screen-Aware live edit. Watch while I reproduce the bug, then start fixing it.
+```
 
 ## Docs
 

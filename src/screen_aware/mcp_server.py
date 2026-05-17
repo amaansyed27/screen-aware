@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import asyncio
 import os
 import time
 from enum import Enum
@@ -11,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import get_settings
 from .event_store import EventStore, utc_now_iso
-from .formatters import compact_event, context_markdown, dumps
+from .formatters import compact_event, context_markdown, dumps, live_watch_markdown
 from .videodb_service import VideoDBService
 
 
@@ -21,6 +22,11 @@ mcp = FastMCP("screen_aware_mcp")
 class ResponseFormat(str, Enum):
     markdown = "markdown"
     json = "json"
+
+
+class LiveWatchMode(str, Enum):
+    diagnose = "diagnose"
+    live_edit = "live_edit"
 
 
 class AnalyzeScreenInput(BaseModel):
@@ -74,6 +80,38 @@ class LiveContextInput(BaseModel):
 
     limit: int = Field(default=20, ge=1, le=100)
     lookback_seconds: int = Field(default=300, ge=10, le=86400)
+    response_format: ResponseFormat = Field(default=ResponseFormat.markdown)
+
+
+class WatchLiveInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    objective: str = Field(
+        default="Watch the active capture while the user reproduces a coding issue.",
+        min_length=1,
+        max_length=500,
+        description="Natural language objective, e.g. 'watch while I reproduce the blank canvas bug'.",
+    )
+    mode: LiveWatchMode = Field(
+        default=LiveWatchMode.diagnose,
+        description=(
+            "diagnose returns observations and asks before editing; live_edit returns evidence "
+            "intended for the agent to immediately inspect and patch code."
+        ),
+    )
+    duration_seconds: int = Field(
+        default=45,
+        ge=5,
+        le=180,
+        description="How long to keep the MCP call open while the user demonstrates the issue.",
+    )
+    settle_seconds: int = Field(
+        default=3,
+        ge=0,
+        le=30,
+        description="Extra time after the watch window for late transcript/index events.",
+    )
+    limit: int = Field(default=12, ge=1, le=30)
     response_format: ResponseFormat = Field(default=ResponseFormat.markdown)
 
 
@@ -140,6 +178,107 @@ def _build_payload(
         "recent_events": [compact_event(event) for event in recent_events],
         "warnings": warnings,
     }
+
+
+@mcp.tool(
+    name="screen_aware_watch_live_issue",
+    annotations={
+        "title": "Watch Live Issue",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+)
+async def screen_aware_watch_live_issue(params: WatchLiveInput) -> str:
+    """Keep the MCP call open while the user demonstrates a bug, then return evidence.
+
+    Use this for simple user prompts like "use Screen-Aware live" or "watch while I show you".
+    In `diagnose` mode, do not edit files after the tool returns; summarize what was observed,
+    explain likely fixes, and ask for approval. In `live_edit` mode, use the returned evidence
+    to start inspecting and patching the project immediately after the watch window ends.
+    """
+
+    store, service = _service()
+    tool_name = f"screen_aware_watch_live_issue:{params.mode.value}"
+    _mark_agent_seen(store, tool_name)
+    session = store.get_session()
+    session_id = (session or {}).get("session_id")
+    started_at = time.time()
+    store.update_backend(
+        mcp_live_mode=params.mode.value,
+        mcp_live_objective=params.objective,
+        mcp_live_started_at=utc_now_iso(),
+        mcp_live_duration_seconds=params.duration_seconds,
+    )
+    store.append_event(
+        {
+            "source": "mcp",
+            "channel": "agent",
+            "event": "mcp.live_watch_started",
+            "capture_session_id": session_id,
+            "data": {
+                "agent": _agent_name(),
+                "mode": params.mode.value,
+                "duration_seconds": params.duration_seconds,
+                "text": f"{_agent_name()} is watching live: {params.objective}",
+            },
+        }
+    )
+
+    await asyncio.sleep(params.duration_seconds)
+    if params.settle_seconds:
+        await asyncio.sleep(params.settle_seconds)
+
+    session = store.get_session(session_id if isinstance(session_id, str) else None)
+    recent = store.recent_events(
+        limit=params.limit,
+        since_unix=started_at,
+        session_id=session_id if isinstance(session_id, str) else None,
+    )
+    results, warnings = await service.search_session(
+        query=params.objective,
+        session_id=session_id if isinstance(session_id, str) else None,
+        modalities={"visual", "audio"},
+        limit=params.limit,
+        score_threshold=0.25,
+    )
+    payload = {
+        "mode": params.mode.value,
+        "objective": params.objective,
+        "watched_seconds": params.duration_seconds,
+        "session": session,
+        "videodb_results": results,
+        "recent_events": [compact_event(event) for event in recent],
+        "warnings": warnings,
+        "agent_instruction": (
+            "Diagnostic mode: explain what you saw, likely root cause, proposed fix, and ask "
+            "the user before editing."
+            if params.mode == LiveWatchMode.diagnose
+            else "Live edit mode: use this evidence to inspect code, patch the smallest likely "
+            "fix, and run relevant verification."
+        ),
+    }
+    store.update_backend(
+        mcp_live_mode=None,
+        mcp_live_completed_at=utc_now_iso(),
+        mcp_tool=tool_name,
+        mcp_last_seen=utc_now_iso(),
+    )
+    store.append_event(
+        {
+            "source": "mcp",
+            "channel": "agent",
+            "event": "mcp.live_watch_completed",
+            "capture_session_id": session_id,
+            "data": {
+                "agent": _agent_name(),
+                "mode": params.mode.value,
+                "text": f"{_agent_name()} finished live watch.",
+            },
+        }
+    )
+    return dumps(payload) if params.response_format == ResponseFormat.json else live_watch_markdown(payload)
 
 
 @mcp.tool(
