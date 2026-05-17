@@ -13,7 +13,6 @@ import {
   Play,
   RefreshCw,
   Send,
-  Sparkles,
   Square,
   X,
   Volume2,
@@ -44,12 +43,17 @@ function groupTrack(group: ChannelGroupName): TrackName {
   return group === "display" ? "screen" : group;
 }
 
-function isRecent(value?: string | null): boolean {
-  if (!value) {
-    return false;
+function displayAgentName(value?: string | null): string {
+  const normalized = value?.trim();
+  return normalized || "Coding agent";
+}
+
+function compactAgentName(value: string): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= 16) {
+    return clean;
   }
-  const parsed = Date.parse(value);
-  return !Number.isNaN(parsed) && Date.now() - parsed < 120_000;
+  return `${clean.slice(0, 15).trim()}...`;
 }
 
 function friendlyChannel(channel?: PlainChannel | null): string {
@@ -246,9 +250,13 @@ export default function App() {
     .find(event => event.text || event.channel || event.event);
 
   const agentLastSeen = status?.backend?.mcp_last_seen ?? null;
-  const agentConnected = status?.backend?.mcp_status === "connected" && isRecent(agentLastSeen);
-  const agentLabel = status?.backend?.mcp_agent ?? "MCP agent";
-  const agentState = agentConnected ? "connected" : agentLastSeen ? "idle" : "waiting";
+  const mcpStatus = status?.backend?.mcp_status ?? "waiting";
+  const agentConnected = mcpStatus === "connected";
+  const agentLinked = agentConnected || Boolean(agentLastSeen) || Boolean(status?.backend?.mcp_agent);
+  const agentLabel = displayAgentName(status?.backend?.mcp_agent);
+  const agentState = agentConnected ? "Connected" : agentLinked ? "Idle" : "Waiting";
+  const agentBadgeState = agentConnected ? "connected" : agentLinked ? "idle" : "waiting";
+  const shareSubtitle = agentLabel === "Coding agent" ? "Share with your agent" : `Share with ${agentLabel}`;
   const backendReady = status?.backend?.ws_status === "connected";
   const sourceHelp = displayChoices.length
     ? shareMode === "screen"
@@ -716,39 +724,42 @@ export default function App() {
       <section className="recorder-card" aria-label="Screen-Aware recorder">
         <header className="card-top" onMouseDown={event => void beginWindowDrag(event)}>
           <div className="app-mark">
-            <span aria-hidden="true">
-              <Sparkles size={16} />
-            </span>
+            <img className="app-logo" src="/logo.svg" alt="" aria-hidden="true" />
             <div>
               <strong>Screen-Aware</strong>
-              <small>Share with Codex</small>
+              <small>{shareSubtitle}</small>
             </div>
           </div>
-          <div
-            className="agent-badge"
-            data-state={agentConnected ? "connected" : "waiting"}
-            data-no-drag="true"
-          >
-            <span>{agentLabel}</span>
-            <strong>{agentState}</strong>
-          </div>
-          <div className="window-controls" aria-label="Window controls" data-no-drag="true">
-            <button
-              type="button"
-              aria-label="Minimize"
-              title="Minimize"
-              onClick={() => void windowControl("minimize")}
+          <div className="header-actions" data-no-drag="true">
+            <div
+              className="agent-badge"
+              data-state={agentBadgeState}
+              title={`${agentLabel}: ${agentState}`}
             >
-              <Minus size={15} />
-            </button>
-            <button
-              type="button"
-              aria-label="Close"
-              title="Close"
-              onClick={() => void windowControl("close")}
-            >
-              <X size={15} />
-            </button>
+              <span className="agent-dot" aria-hidden="true" />
+              <span className="agent-copy">
+                <strong>{compactAgentName(agentLabel)}</strong>
+                <small>{agentState}</small>
+              </span>
+            </div>
+            <div className="window-controls" aria-label="Window controls">
+              <button
+                type="button"
+                aria-label="Minimize"
+                title="Minimize"
+                onClick={() => void windowControl("minimize")}
+              >
+                <Minus size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="Close"
+                title="Close"
+                onClick={() => void windowControl("close")}
+              >
+                <X size={15} />
+              </button>
+            </div>
           </div>
         </header>
 
