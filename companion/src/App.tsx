@@ -3,8 +3,10 @@ import {
   AlertCircle,
   ChevronDown,
   Loader2,
+  Maximize2,
   Mic,
   MicOff,
+  Minus,
   Monitor,
   Pause,
   Play,
@@ -15,7 +17,7 @@ import {
   Volume2,
   VolumeX
 } from "lucide-react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { createSession, getEvents, getStatus, liveUrl, postClientEvent } from "./api";
 import { tauriCapture } from "./capture";
 import type {
@@ -355,8 +357,8 @@ export default function App() {
     await refresh();
   }
 
-  async function closeWindow() {
-    await getCurrentWindow().close();
+  async function windowControl(action: "minimize" | "maximize" | "close") {
+    await invoke("window_control", { action });
   }
 
   if (capturing) {
@@ -423,19 +425,40 @@ export default function App() {
       <section className="recorder-card" aria-label="Screen-Aware recorder">
         <header className="card-top">
           <div className="drag-region" data-tauri-drag-region>
-            <div className="window-dots" aria-hidden="true" data-tauri-drag-region>
-              <span data-tauri-drag-region />
-              <span data-tauri-drag-region />
-              <span data-tauri-drag-region />
+            <div className="app-mark" data-tauri-drag-region>
+              <span data-tauri-drag-region>Screen-Aware</span>
             </div>
           </div>
           <div className="agent-badge" data-state={agentConnected ? "connected" : "waiting"}>
             <span>{agentLabel}</span>
             <strong>{agentState}</strong>
           </div>
-          <button className="window-close" type="button" onClick={() => void closeWindow()}>
-            <X size={16} />
-          </button>
+          <div className="window-controls" aria-label="Window controls">
+            <button
+              type="button"
+              aria-label="Minimize"
+              title="Minimize"
+              onClick={() => void windowControl("minimize")}
+            >
+              <Minus size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label="Maximize"
+              title="Maximize"
+              onClick={() => void windowControl("maximize")}
+            >
+              <Maximize2 size={14} />
+            </button>
+            <button
+              type="button"
+              aria-label="Close"
+              title="Close"
+              onClick={() => void windowControl("close")}
+            >
+              <X size={15} />
+            </button>
+          </div>
         </header>
 
         <div className="mode-switch" aria-label="Capture mode">

@@ -673,6 +673,30 @@ async fn set_compact_window(app: AppHandle, compact: bool) -> CaptureResult<OkRe
     Ok(OkResponse { ok: true })
 }
 
+#[tauri::command]
+async fn window_control(app: AppHandle, action: String) -> CaptureResult<OkResponse> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| CaptureError::Message("Main window was not found".into()))?;
+    match action.as_str() {
+        "minimize" => window.minimize()?,
+        "maximize" => {
+            if window.is_maximized()? {
+                window.unmaximize()?;
+            } else {
+                window.maximize()?;
+            }
+        }
+        "close" => window.close()?,
+        _ => {
+            return Err(CaptureError::Message(format!(
+                "Unknown window control action `{action}`"
+            )))
+        }
+    }
+    Ok(OkResponse { ok: true })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(CaptureState::default())
@@ -685,7 +709,8 @@ pub fn run() {
             resume_tracks,
             stop_capture,
             shutdown_capture,
-            set_compact_window
+            set_compact_window,
+            window_control
         ])
         .setup(|app| {
             let _ = app.path().app_data_dir();
