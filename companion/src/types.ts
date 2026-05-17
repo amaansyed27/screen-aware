@@ -54,12 +54,6 @@ export interface ScreenAwareEvent {
   data?: unknown;
 }
 
-export interface LiveReply {
-  ok: boolean;
-  reply: ScreenAwareEvent;
-  warnings: string[];
-}
-
 export interface ApiStatus {
   backend: {
     ws_connection_id?: string;

@@ -22,14 +22,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from .config import get_settings
 from .event_store import EventStore
 from .formatters import compact_event
-from .live_assistant import LiveAssistant
 from .videodb_service import VideoDBService
 
 
 settings = get_settings()
 store = EventStore(settings.data_dir)
 videodb_service = VideoDBService(settings, store)
-live_assistant = LiveAssistant(settings)
 
 
 class LiveClients:
@@ -122,14 +120,6 @@ class ClientEventRequest(BaseModel):
     data: dict[str, Any] = Field(default_factory=dict)
 
 
-class LiveMessageRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    session_id: str
-    message: str = Field(..., min_length=1, max_length=1600)
-    source: str = Field(default="typed", max_length=40)
-
-
 class QueryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -189,7 +179,7 @@ async def create_session(request: CreateSessionRequest) -> dict[str, Any]:
 
 @app.post("/api/capture/client-event")
 async def client_event(request: ClientEventRequest) -> dict[str, Any]:
-    normalized = store.record_client_event(
+    store.record_client_event(
         request.session_id,
         {
             "event": request.event,
@@ -199,103 +189,8 @@ async def client_event(request: ClientEventRequest) -> dict[str, Any]:
     if request.event in {"capture.started", "capture.stopped"}:
         status_value = "client_capturing" if request.event == "capture.started" else "client_stopped"
         store.upsert_session(request.session_id, client_status=status_value)
-    await live_clients.broadcast({"type": "videodb_event", "event": compact_event(normalized)})
     await live_clients.broadcast({"type": "status", "state": public_state()})
     return {"ok": True}
-
-
-async def _search_live_context(
-    *,
-    session_id: str,
-    message: str,
-) -> tuple[list[dict[str, Any]], list[str]]:
-    warnings: list[str] = []
-    try:
-        results, search_warnings = await asyncio.wait_for(
-            videodb_service.search_session(
-                query=message,
-                session_id=session_id,
-                modalities={"visual", "audio"},
-                limit=5,
-                score_threshold=0.2,
-            ),
-            timeout=settings.live_ai_context_timeout_seconds,
-        )
-        warnings.extend(search_warnings)
-        return results, warnings
-    except TimeoutError:
-        warnings.append("VideoDB context search timed out; using recent live events only.")
-    except Exception as exc:  # noqa: BLE001 - live replies should degrade, not fail the overlay.
-        warnings.append(f"VideoDB context search failed: {exc}")
-    return [], warnings
-
-
-@app.post("/api/live/messages")
-async def live_message(request: LiveMessageRequest) -> dict[str, Any]:
-    session = store.get_session(request.session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="session not found")
-
-    user_event = store.record_client_event(
-        request.session_id,
-        {
-            "event": "user.live_message",
-            "data": {
-                "text": request.message,
-                "source": request.source,
-            },
-        },
-    )
-    await live_clients.broadcast({"type": "videodb_event", "event": compact_event(user_event)})
-
-    search_results, warnings = await _search_live_context(
-        session_id=request.session_id,
-        message=request.message,
-    )
-    recent = store.recent_events(
-        limit=settings.live_ai_max_context_events,
-        session_id=request.session_id,
-    )
-    agent_name = store.read_state().get("backend", {}).get("mcp_agent")
-    try:
-        reply = await live_assistant.respond(
-            user_message=request.message,
-            session=session,
-            agent_name=agent_name if isinstance(agent_name, str) else None,
-            recent_events=recent,
-            search_results=search_results,
-            warnings=warnings,
-        )
-    except Exception as exc:  # noqa: BLE001 - report the failure in-band to the overlay.
-        reply = {
-            "ok": False,
-            "status": "error",
-            "provider": settings.live_ai_provider,
-            "model": settings.live_ai_model,
-            "text": f"Live reply failed: {exc}",
-            "warnings": warnings,
-        }
-
-    assistant_event = store.record_client_event(
-        request.session_id,
-        {
-            "event": "assistant.live_reply",
-            "data": {
-                "text": reply["text"],
-                "ok": reply.get("ok", False),
-                "status": reply.get("status"),
-                "provider": reply.get("provider"),
-                "model": reply.get("model"),
-                "source": request.source,
-                "warnings": reply.get("warnings", []),
-            },
-        },
-    )
-    compact_reply = compact_event(assistant_event)
-    await live_clients.broadcast({"type": "assistant_reply", "message": compact_reply})
-    await live_clients.broadcast({"type": "videodb_event", "event": compact_reply})
-    await live_clients.broadcast({"type": "status", "state": public_state(session)})
-    return {"ok": True, "reply": compact_reply, "warnings": reply.get("warnings", [])}
 
 
 @app.post("/api/window-capture/segments")

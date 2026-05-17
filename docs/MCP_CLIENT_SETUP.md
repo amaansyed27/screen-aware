@@ -229,7 +229,7 @@ Live edit mode:
 Use Screen-Aware live edit. Watch while I reproduce the bug, then start fixing it.
 ```
 
-The MCP server exposes `screen_aware_watch_live_issue` for these prompts. It keeps the tool call open while you demonstrate the issue, then returns visual/audio/user-note evidence to the agent. In diagnostic mode the agent should report and ask before changing files. In live edit mode the agent should immediately inspect and patch after the watch window.
+The MCP server exposes `screen_aware_watch_live_issue` for these prompts. It keeps the tool call open while you demonstrate the issue, then returns visual/audio/annotation evidence to the agent. In diagnostic mode the agent should report and ask before changing files. In live edit mode the agent should immediately inspect and patch after the watch window.
 
 More explicit prompt for strict clients:
 

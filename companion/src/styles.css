@@ -599,10 +599,12 @@ input:focus-visible {
 .floating-toolbar {
   position: relative;
   z-index: 2;
-  width: min(100%, 960px);
+  width: min(100%, 650px);
   margin: 0 auto;
   min-height: 76px;
   display: grid;
+  grid-template-columns: 118px 150px 204px 108px;
+  align-items: center;
   gap: 10px;
   border: 1px solid #d8d4cc;
   border-radius: 34px;
@@ -618,17 +620,6 @@ input:focus-visible {
 .floating-toolbar.collapsed {
   width: min(100%, 336px);
   min-height: 70px;
-}
-
-.toolbar-main {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 118px 150px 204px minmax(220px, 1fr) 108px;
-  align-items: center;
-  gap: 10px;
-}
-
-.floating-toolbar.collapsed .toolbar-main {
   grid-template-columns: minmax(0, 1fr) 108px;
 }
 
@@ -660,7 +651,6 @@ input:focus-visible {
 
 .toolbar-buttons button,
 .annotation-controls button,
-.toolbar-note button,
 .toolbar-collapse,
 .toolbar-stop {
   width: 48px;
@@ -681,36 +671,8 @@ input:focus-visible {
   gap: 8px;
 }
 
-.toolbar-note {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px 48px;
-  gap: 8px;
-}
-
-.toolbar-note input {
-  width: 100%;
-  height: 48px;
-  border: 0;
-  border-radius: 999px;
-  background: #f2f0ed;
-  color: #121212;
-  padding: 0 16px;
-}
-
-.toolbar-note button,
 .toolbar-collapse,
 .toolbar-stop {
-  background: #121212;
-  color: #fffdfa;
-}
-
-.toolbar-note .voice-live {
-  background: #f2f0ed;
-  color: #121212;
-}
-
-.toolbar-note .voice-live.active {
   background: #121212;
   color: #fffdfa;
 }
@@ -727,54 +689,6 @@ input:focus-visible {
 .floating-error {
   width: min(100%, 900px);
   margin: 10px auto 0;
-}
-
-.live-thread {
-  max-height: 132px;
-  display: grid;
-  gap: 7px;
-  overflow-y: auto;
-  padding: 2px 4px 0;
-  scrollbar-width: thin;
-  scrollbar-color: #c9c5bd transparent;
-}
-
-.live-message {
-  max-width: min(560px, 86%);
-  display: grid;
-  gap: 2px;
-  border-radius: 18px;
-  background: #f2f0ed;
-  color: #121212;
-  padding: 8px 12px;
-}
-
-.live-message.user {
-  justify-self: end;
-  background: #121212;
-  color: #fffdfa;
-}
-
-.live-message.assistant {
-  justify-self: start;
-}
-
-.live-message.pending {
-  opacity: 0.72;
-}
-
-.live-message span {
-  font-size: 10px;
-  font-weight: 760;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.live-message p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.3;
-  user-select: text;
 }
 
 .spin {
@@ -802,14 +716,10 @@ input:focus-visible {
   }
 
   .floating-toolbar {
-    width: min(100%, 420px);
-  }
-
-  .toolbar-main {
     grid-template-columns: 1fr;
   }
 
-  .floating-toolbar.collapsed .toolbar-main {
+  .floating-toolbar.collapsed {
     grid-template-columns: minmax(0, 1fr) 108px;
   }
 

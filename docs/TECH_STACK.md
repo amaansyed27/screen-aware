@@ -6,7 +6,6 @@
 - FastAPI for the local HTTP control plane.
 - FastMCP from the Python MCP SDK for stdio MCP server support.
 - Pydantic settings and validation for environment-driven config.
-- `httpx` for optional OpenRouter and direct Gemini live overlay replies.
 - VideoDB Python SDK with capture support for CaptureSession, RTStream indexing, transcript, and semantic search.
 - JSON/JSONL local state for simple inspection and multi-client sharing.
 
@@ -22,15 +21,6 @@
 - Local stdio transport. This is the most portable option for CLI coding agents and editor integrations.
 - Read-only tools with descriptive names and Pydantic input models.
 - Markdown output by default, JSON output when an agent asks for structured data.
-
-## Live Overlay Replies
-
-- `POST /api/live/messages` accepts typed overlay messages and speech-recognition transcripts.
-- Replies are pushed back over the existing `/api/live` WebSocket.
-- The model API is configured with `SCREEN_AWARE_LIVE_PROVIDER`, `SCREEN_AWARE_LIVE_BASE_URL`, `SCREEN_AWARE_LIVE_MODEL`, `SCREEN_AWARE_LIVE_FALLBACK_MODELS`, and `SCREEN_AWARE_LIVE_API_KEY`.
-- Default live provider: OpenRouter, using `deepseek/deepseek-v4-flash:free` with Gemini model fallbacks.
-- Direct Gemini provider: `gemini`, using `gemini-3.1-flash-lite` with Gemini 3 Flash fallback.
-- Live replies explain what Screen-Aware sees and suggest fix targets; code edits still happen through the connected MCP coding agent.
 
 ## Frontend Design System
 
@@ -48,3 +38,4 @@
 - Runtime state: `C:\Users\Amaan\Downloads\screen-aware\.screen-aware`
 - Env file: `C:\Users\Amaan\Downloads\screen-aware\.env`
 - MCP command: `C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.mcp_server`
+

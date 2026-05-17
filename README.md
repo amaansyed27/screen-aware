@@ -16,13 +16,6 @@ notepad .env
 ```
 
 Set `VIDEO_DB_API_KEY` in `.env`.
-For real-time replies inside the floating overlay, also set `SCREEN_AWARE_LIVE_API_KEY`
-or `OPENROUTER_API_KEY`. The default live path uses OpenRouter with
-`deepseek/deepseek-v4-flash:free`, then falls back to Gemini models through the
-OpenAI-compatible `/chat/completions` endpoint.
-
-Direct Gemini API is also supported. Use `SCREEN_AWARE_LIVE_PROVIDER=gemini` with
-`gemini-3.1-flash-lite`.
 
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion
@@ -54,7 +47,7 @@ npm run tauri:dev
 In the companion, choose Full screen or Window, choose Mic and optionally System sound, then press Start.
 Window capture uses the native OS picker and uploads searchable segments to VideoDB.
 During sharing, use the Pointer, Pen, and Highlighter controls in the floating toolbar to mark the screen. Annotation actions are recorded as live context for MCP agents.
-Type in the floating live box, or use the live mic button when your WebView supports speech recognition, to get immediate overlay replies. Those replies are also stored as context for MCP agents.
+The floating toolbar is only for capture controls; keep the conversation in Codex or your connected MCP agent chat.
 
 ## What It Builds
 
@@ -65,7 +58,6 @@ screen-aware/
     config.py           environment and .env settings
     event_store.py      shared JSON/JSONL state under .screen-aware/
     formatters.py       API and MCP response formatting
-    live_assistant.py   live overlay replies through OpenRouter or Gemini API
     mcp_server.py       FastMCP stdio server
     videodb_service.py  VideoDB CaptureSession, RTStream indexing, search
   companion/
@@ -86,7 +78,7 @@ C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.m
 
 Tools:
 
-- `screen_aware_watch_live_issue`: keeps the MCP call open while you demonstrate a bug, then returns live visual/audio/user-note evidence. Use `diagnose` mode to ask before edits or `live_edit` mode to proceed into fixes.
+- `screen_aware_watch_live_issue`: keeps the MCP call open while you demonstrate a bug, then returns live visual/audio/annotation evidence. Use `diagnose` mode to ask before edits or `live_edit` mode to proceed into fixes.
 - `screen_aware_analyze_screen_context`: semantic visual/audio search plus recent live events.
 - `screen_aware_query_workflow_history`: semantic search over previous captured workflow context.
 - `screen_aware_get_live_context`: recent transcript, visual, audio, and lifecycle events without semantic search.

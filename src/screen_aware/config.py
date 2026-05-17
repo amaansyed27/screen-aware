@@ -65,41 +65,11 @@ class Settings(BaseSettings):
     visual_frame_count: int = Field(default=3, alias="SCREEN_AWARE_VISUAL_FRAME_COUNT")
     audio_batch_words: int = Field(default=50, alias="SCREEN_AWARE_AUDIO_BATCH_WORDS")
     max_recent_events: int = Field(default=200, alias="SCREEN_AWARE_MAX_RECENT_EVENTS")
-    live_ai_provider: str = Field(default="openrouter", alias="SCREEN_AWARE_LIVE_PROVIDER")
-    live_ai_api_key: str | None = Field(default=None, alias="SCREEN_AWARE_LIVE_API_KEY")
-    live_ai_base_url: str = Field(
-        default="https://openrouter.ai/api/v1", alias="SCREEN_AWARE_LIVE_BASE_URL"
-    )
-    live_ai_model: str = Field(
-        default="deepseek/deepseek-v4-flash:free", alias="SCREEN_AWARE_LIVE_MODEL"
-    )
-    live_ai_fallback_models: str = Field(
-        default="google/gemini-3.1-flash-lite,google/gemini-3-flash-preview",
-        alias="SCREEN_AWARE_LIVE_FALLBACK_MODELS",
-    )
-    live_ai_thinking_level: str = Field(default="low", alias="SCREEN_AWARE_LIVE_THINKING_LEVEL")
-    live_ai_timeout_seconds: float = Field(default=20.0, alias="SCREEN_AWARE_LIVE_TIMEOUT_SECONDS")
-    live_ai_context_timeout_seconds: float = Field(
-        default=4.0, alias="SCREEN_AWARE_LIVE_CONTEXT_TIMEOUT_SECONDS"
-    )
-    live_ai_max_context_events: int = Field(
-        default=14, alias="SCREEN_AWARE_LIVE_MAX_CONTEXT_EVENTS"
-    )
 
     @field_validator("video_db_api_key", mode="before")
     @classmethod
     def accept_node_sdk_env_name(cls, value: str | None) -> str | None:
         return value or os.getenv("VIDEODB_API_KEY")
-
-    @field_validator("live_ai_api_key", mode="before")
-    @classmethod
-    def accept_openai_env_name(cls, value: str | None) -> str | None:
-        return value
-
-    @field_validator("live_ai_provider")
-    @classmethod
-    def normalize_live_ai_provider(cls, value: str) -> str:
-        return value.strip().lower() or "openrouter"
 
     @field_validator("screen_aware_data_dir")
     @classmethod
