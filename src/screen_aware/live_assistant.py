@@ -42,7 +42,7 @@ class LiveAssistant:
                 "model": self.settings.live_ai_model,
                 "text": (
                     "Live replies need a model key. Add SCREEN_AWARE_LIVE_API_KEY "
-                    "or OPENAI_API_KEY to .env, restart screen-aware-api, then ask again."
+                    "or OPENROUTER_API_KEY to .env, restart screen-aware-api, then ask again."
                 ),
                 "warnings": warnings,
             }
@@ -55,7 +55,7 @@ class LiveAssistant:
             search_results=search_results,
             warnings=warnings,
         )
-        response = await self._chat_completion(prompt)
+        response, model = await self._chat_completion(prompt)
         text = response.strip()
         if not text:
             text = "I did not get a usable live reply from the model. Try that once more."
@@ -63,7 +63,7 @@ class LiveAssistant:
             "ok": True,
             "status": "answered",
             "provider": "openai-compatible",
-            "model": self.settings.live_ai_model,
+            "model": model,
             "text": text,
             "warnings": warnings,
         }
@@ -120,28 +120,52 @@ class LiveAssistant:
             "data": data,
         }
 
-    async def _chat_completion(self, messages: list[dict[str, str]]) -> str:
+    def _model_candidates(self) -> list[str]:
+        candidates = [self.settings.live_ai_model]
+        candidates.extend(
+            item.strip()
+            for item in self.settings.live_ai_fallback_models.split(",")
+            if item.strip()
+        )
+        deduped: list[str] = []
+        for model in candidates:
+            if model not in deduped:
+                deduped.append(model)
+        return deduped
+
+    async def _chat_completion(self, messages: list[dict[str, str]]) -> tuple[str, str]:
         base_url = self.settings.live_ai_base_url.rstrip("/")
         url = f"{base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.settings.live_ai_api_key}",
             "Content-Type": "application/json",
+            "HTTP-Referer": "http://127.0.0.1:8787",
+            "X-Title": "Screen-Aware Copilot",
         }
-        body = {
-            "model": self.settings.live_ai_model,
-            "messages": messages,
-            "temperature": 0.2,
-            "max_tokens": 220,
-        }
+        last_error: Exception | None = None
         async with httpx.AsyncClient(timeout=self.settings.live_ai_timeout_seconds) as client:
-            response = await client.post(url, headers=headers, json=body)
-            response.raise_for_status()
-            data = response.json()
-        choices = data.get("choices")
-        if not isinstance(choices, list) or not choices:
-            return ""
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            return ""
-        content = message.get("content")
-        return content if isinstance(content, str) else ""
+            for model in self._model_candidates():
+                body = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 220,
+                }
+                try:
+                    response = await client.post(url, headers=headers, json=body)
+                    response.raise_for_status()
+                    data = response.json()
+                except Exception as exc:  # noqa: BLE001 - try configured model fallbacks.
+                    last_error = exc
+                    continue
+                choices = data.get("choices")
+                if not isinstance(choices, list) or not choices:
+                    return "", model
+                message = choices[0].get("message")
+                if not isinstance(message, dict):
+                    return "", model
+                content = message.get("content")
+                return (content if isinstance(content, str) else ""), model
+        if last_error is not None:
+            raise last_error
+        return "", self.settings.live_ai_model

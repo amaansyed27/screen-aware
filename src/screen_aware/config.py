@@ -67,9 +67,15 @@ class Settings(BaseSettings):
     max_recent_events: int = Field(default=200, alias="SCREEN_AWARE_MAX_RECENT_EVENTS")
     live_ai_api_key: str | None = Field(default=None, alias="SCREEN_AWARE_LIVE_API_KEY")
     live_ai_base_url: str = Field(
-        default="https://api.openai.com/v1", alias="SCREEN_AWARE_LIVE_BASE_URL"
+        default="https://openrouter.ai/api/v1", alias="SCREEN_AWARE_LIVE_BASE_URL"
     )
-    live_ai_model: str = Field(default="gpt-4.1-mini", alias="SCREEN_AWARE_LIVE_MODEL")
+    live_ai_model: str = Field(
+        default="google/gemini-3-flash-preview", alias="SCREEN_AWARE_LIVE_MODEL"
+    )
+    live_ai_fallback_models: str = Field(
+        default="google/gemini-3.1-flash-lite,google/gemini-3.1-flash-lite-preview",
+        alias="SCREEN_AWARE_LIVE_FALLBACK_MODELS",
+    )
     live_ai_timeout_seconds: float = Field(default=20.0, alias="SCREEN_AWARE_LIVE_TIMEOUT_SECONDS")
     live_ai_context_timeout_seconds: float = Field(
         default=4.0, alias="SCREEN_AWARE_LIVE_CONTEXT_TIMEOUT_SECONDS"
@@ -86,7 +92,7 @@ class Settings(BaseSettings):
     @field_validator("live_ai_api_key", mode="before")
     @classmethod
     def accept_openai_env_name(cls, value: str | None) -> str | None:
-        return value or os.getenv("OPENAI_API_KEY")
+        return value or os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
 
     @field_validator("screen_aware_data_dir")
     @classmethod

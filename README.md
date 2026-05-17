@@ -17,8 +17,9 @@ notepad .env
 
 Set `VIDEO_DB_API_KEY` in `.env`.
 For real-time replies inside the floating overlay, also set `SCREEN_AWARE_LIVE_API_KEY`
-or `OPENAI_API_KEY`. The live reply path uses an OpenAI-compatible `/chat/completions`
-endpoint configured by `SCREEN_AWARE_LIVE_BASE_URL` and `SCREEN_AWARE_LIVE_MODEL`.
+or `OPENROUTER_API_KEY`. The default live path uses OpenRouter with
+`google/gemini-3-flash-preview`, then falls back to Gemini Flash Lite models through the
+OpenAI-compatible `/chat/completions` endpoint.
 
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion
