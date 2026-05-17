@@ -49,9 +49,9 @@ def test_live_assistant_uses_openrouter_defaults(monkeypatch, tmp_path):
     assert assistant.api_key == "openrouter-key"
     assert settings.live_ai_base_url == "https://openrouter.ai/api/v1"
     assert assistant._model_candidates() == [
-        "google/gemini-3-flash-preview",
+        "deepseek/deepseek-v4-flash:free",
         "google/gemini-3.1-flash-lite",
-        "google/gemini-3.1-flash-lite-preview",
+        "google/gemini-3-flash-preview",
     ]
 
 
@@ -70,7 +70,26 @@ def test_live_assistant_supports_direct_gemini_provider(monkeypatch, tmp_path):
     assert assistant.provider == "gemini"
     assert assistant.api_key == "gemini-key"
     assert assistant._model_candidates(gemini=True) == [
+        "gemini-3.1-flash-lite",
         "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite-preview",
+    ]
+
+
+def test_live_assistant_supports_direct_gemini_flash_lite_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key")
+    settings = Settings(
+        VIDEO_DB_API_KEY="video-key",
+        SCREEN_AWARE_DATA_DIR=tmp_path,
+        SCREEN_AWARE_LIVE_PROVIDER="gemini",
+        SCREEN_AWARE_LIVE_MODEL="gemini-3.1-flash-lite",
+        SCREEN_AWARE_LIVE_FALLBACK_MODELS="gemini-3.1-flash-lite-preview",
+        SCREEN_AWARE_LIVE_API_KEY=None,
+    )
+    assistant = LiveAssistant(settings)
+
+    assert assistant._model_candidates(gemini=True) == [
+        "gemini-3.1-flash-lite",
         "gemini-3.1-flash-lite-preview",
     ]
 

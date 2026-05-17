@@ -18,11 +18,11 @@ notepad .env
 Set `VIDEO_DB_API_KEY` in `.env`.
 For real-time replies inside the floating overlay, also set `SCREEN_AWARE_LIVE_API_KEY`
 or `OPENROUTER_API_KEY`. The default live path uses OpenRouter with
-`google/gemini-3-flash-preview`, then falls back to Gemini Flash Lite models through the
+`deepseek/deepseek-v4-flash:free`, then falls back to Gemini models through the
 OpenAI-compatible `/chat/completions` endpoint.
 
 Direct Gemini API is also supported. Use `SCREEN_AWARE_LIVE_PROVIDER=gemini` with
-`gemini-3-flash-preview` or `gemini-3.1-flash-lite-preview`.
+`gemini-3.1-flash-lite`.
 
 ```powershell
 cd C:\Users\Amaan\Downloads\screen-aware\companion

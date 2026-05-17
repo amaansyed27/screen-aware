@@ -28,8 +28,8 @@
 - `POST /api/live/messages` accepts typed overlay messages and speech-recognition transcripts.
 - Replies are pushed back over the existing `/api/live` WebSocket.
 - The model API is configured with `SCREEN_AWARE_LIVE_PROVIDER`, `SCREEN_AWARE_LIVE_BASE_URL`, `SCREEN_AWARE_LIVE_MODEL`, `SCREEN_AWARE_LIVE_FALLBACK_MODELS`, and `SCREEN_AWARE_LIVE_API_KEY`.
-- Default live provider: OpenRouter, using `google/gemini-3-flash-preview` with `google/gemini-3.1-flash-lite` fallback.
-- Direct Gemini provider: `gemini`, using `gemini-3-flash-preview` with `gemini-3.1-flash-lite-preview` fallback.
+- Default live provider: OpenRouter, using `deepseek/deepseek-v4-flash:free` with Gemini model fallbacks.
+- Direct Gemini provider: `gemini`, using `gemini-3.1-flash-lite` with Gemini 3 Flash fallback.
 - Live replies explain what Screen-Aware sees and suggest fix targets; code edits still happen through the connected MCP coding agent.
 
 ## Frontend Design System

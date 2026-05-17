@@ -14,9 +14,19 @@ from .formatters import compact_event
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 OPENAI_COMPATIBLE_PROVIDERS = {"openrouter", "openai", "openai-compatible"}
+DEFAULT_OPENROUTER_MODEL = "deepseek/deepseek-v4-flash:free"
+DEFAULT_OPENROUTER_FALLBACKS = [
+    "google/gemini-3.1-flash-lite",
+    "google/gemini-3-flash-preview",
+]
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_GEMINI_FALLBACKS = [
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
+]
 GEMINI_MODEL_ALIASES = {
     "google/gemini-3-flash-preview": "gemini-3-flash-preview",
-    "google/gemini-3.1-flash-lite": "gemini-3.1-flash-lite-preview",
+    "google/gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
     "google/gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite-preview",
 }
 
@@ -160,10 +170,17 @@ class LiveAssistant:
         }
 
     def _model_candidates(self, *, gemini: bool = False) -> list[str]:
-        candidates = [self.settings.live_ai_model]
+        model = self.settings.live_ai_model
+        fallback_models = self.settings.live_ai_fallback_models
+        if gemini and model == DEFAULT_OPENROUTER_MODEL:
+            model = DEFAULT_GEMINI_MODEL
+        if gemini and fallback_models == ",".join(DEFAULT_OPENROUTER_FALLBACKS):
+            fallback_models = ",".join(DEFAULT_GEMINI_FALLBACKS)
+
+        candidates = [model]
         candidates.extend(
             item.strip()
-            for item in self.settings.live_ai_fallback_models.split(",")
+            for item in fallback_models.split(",")
             if item.strip()
         )
         deduped: list[str] = []

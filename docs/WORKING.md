@@ -24,8 +24,8 @@ OpenRouter is the default. Use either `SCREEN_AWARE_LIVE_API_KEY` or `OPENROUTER
 ```env
 SCREEN_AWARE_LIVE_PROVIDER=openrouter
 SCREEN_AWARE_LIVE_BASE_URL=https://openrouter.ai/api/v1
-SCREEN_AWARE_LIVE_MODEL=google/gemini-3-flash-preview
-SCREEN_AWARE_LIVE_FALLBACK_MODELS=google/gemini-3.1-flash-lite,google/gemini-3.1-flash-lite-preview
+SCREEN_AWARE_LIVE_MODEL=deepseek/deepseek-v4-flash:free
+SCREEN_AWARE_LIVE_FALLBACK_MODELS=google/gemini-3.1-flash-lite,google/gemini-3-flash-preview
 ```
 
 For direct Gemini API, use `SCREEN_AWARE_LIVE_PROVIDER=gemini` and either
@@ -34,8 +34,8 @@ For direct Gemini API, use `SCREEN_AWARE_LIVE_PROVIDER=gemini` and either
 ```env
 SCREEN_AWARE_LIVE_PROVIDER=gemini
 SCREEN_AWARE_LIVE_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-SCREEN_AWARE_LIVE_MODEL=gemini-3-flash-preview
-SCREEN_AWARE_LIVE_FALLBACK_MODELS=gemini-3.1-flash-lite-preview
+SCREEN_AWARE_LIVE_MODEL=gemini-3.1-flash-lite
+SCREEN_AWARE_LIVE_FALLBACK_MODELS=gemini-3-flash-preview,gemini-3.1-flash-lite-preview
 SCREEN_AWARE_LIVE_THINKING_LEVEL=low
 ```
 

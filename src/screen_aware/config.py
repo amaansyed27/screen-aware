@@ -71,10 +71,10 @@ class Settings(BaseSettings):
         default="https://openrouter.ai/api/v1", alias="SCREEN_AWARE_LIVE_BASE_URL"
     )
     live_ai_model: str = Field(
-        default="google/gemini-3-flash-preview", alias="SCREEN_AWARE_LIVE_MODEL"
+        default="deepseek/deepseek-v4-flash:free", alias="SCREEN_AWARE_LIVE_MODEL"
     )
     live_ai_fallback_models: str = Field(
-        default="google/gemini-3.1-flash-lite,google/gemini-3.1-flash-lite-preview",
+        default="google/gemini-3.1-flash-lite,google/gemini-3-flash-preview",
         alias="SCREEN_AWARE_LIVE_FALLBACK_MODELS",
     )
     live_ai_thinking_level: str = Field(default="low", alias="SCREEN_AWARE_LIVE_THINKING_LEVEL")
