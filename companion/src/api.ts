@@ -3,11 +3,12 @@ import type { ApiStatus, ScreenAwareEvent, SessionHandshake } from "./types";
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    },
+    headers,
     ...init
   });
   if (!response.ok) {
@@ -53,4 +54,3 @@ export function liveUrl(): string {
   base.pathname = "/api/live";
   return base.toString();
 }
-

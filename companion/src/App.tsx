@@ -32,6 +32,7 @@ import type {
 } from "./types";
 
 type ShareMode = "screen" | "window";
+type MenuName = "source" | "mic" | null;
 
 function groupTrack(group: ChannelGroupName): TrackName {
   return group === "display" ? "screen" : group;
@@ -92,6 +93,7 @@ export default function App() {
   const [loadingSources, setLoadingSources] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
+  const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [pausedTracks, setPausedTracks] = useState<Record<TrackName, boolean>>({
     mic: false,
     screen: false,
@@ -362,12 +364,22 @@ export default function App() {
     await invoke("window_control", { action });
   }
 
+  function selectSource(channelId: string) {
+    setSelectedDisplayId(channelId);
+    setOpenMenu(null);
+  }
+
+  function selectMic(channelId: string) {
+    setSelectedMicId(channelId);
+    setOpenMenu(null);
+  }
+
   async function beginWindowDrag(event: ReactMouseEvent<HTMLElement>) {
     if (event.button !== 0) {
       return;
     }
     const target = event.target as HTMLElement;
-    if (target.closest("button, select, input, textarea, [data-no-drag='true']")) {
+    if (target.closest("button, input, textarea, [data-no-drag='true']")) {
       return;
     }
     if (event.detail === 2) {
@@ -513,40 +525,47 @@ export default function App() {
 
         <div className="source-help">{sourceHelp}</div>
 
-        <label className="recorder-row">
+        <div className="recorder-row picker-row" data-no-drag="true">
           <Monitor size={24} />
           <div>
             <span>Source</span>
-            <select value={selectedDisplayId} onChange={event => setSelectedDisplayId(event.target.value)}>
+            <button
+              className="picker-value"
+              type="button"
+              onClick={() => setOpenMenu(openMenu === "source" ? null : "source")}
+            >
+              {friendlyChannel(selectedDisplay)}
+            </button>
+          </div>
+          <button
+            className="picker-chevron"
+            type="button"
+            aria-label="Open source menu"
+            onClick={() => setOpenMenu(openMenu === "source" ? null : "source")}
+          >
+            <ChevronDown size={18} />
+          </button>
+          {openMenu === "source" && (
+            <div className="picker-menu" role="menu">
               {displayChoices.length ? (
                 displayChoices.map(channel => (
-                  <option key={channel.id} value={channel.id}>
-                    {friendlyChannel(channel)}
-                  </option>
+                  <button
+                    key={channel.id}
+                    className={channel.id === selectedDisplayId ? "picker-option selected" : "picker-option"}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => selectSource(channel.id)}
+                  >
+                    <span>{sourceKindLabel(channel)}</span>
+                    <strong>{friendlyChannel(channel)}</strong>
+                  </button>
                 ))
               ) : (
-                <option value="">Choose source first</option>
+                <div className="picker-empty">Choose source first</div>
               )}
-            </select>
-          </div>
-          <ChevronDown size={18} />
-        </label>
-
-        {displayChoices.length > 0 && (
-          <div className="source-list" aria-label="Available share targets">
-            {displayChoices.map(channel => (
-              <button
-                key={channel.id}
-                className={channel.id === selectedDisplayId ? "source-option selected" : "source-option"}
-                type="button"
-                onClick={() => setSelectedDisplayId(channel.id)}
-              >
-                <span>{sourceKindLabel(channel)}</span>
-                <strong>{friendlyChannel(channel)}</strong>
-              </button>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
 
         {channels.length > 0 && shareMode === "window" && !hasModeSpecificDisplay && (
           <div className="inline-note">
@@ -554,34 +573,50 @@ export default function App() {
           </div>
         )}
 
-        <label className="recorder-row">
+        <div className="recorder-row picker-row" data-no-drag="true">
           {micEnabled ? <Mic size={24} /> : <MicOff size={24} />}
           <div>
             <span>Microphone</span>
-            <select
+            <button
+              className="picker-value"
               disabled={!micEnabled}
-              value={selectedMicId}
-              onChange={event => setSelectedMicId(event.target.value)}
+              type="button"
+              onClick={() => setOpenMenu(openMenu === "mic" ? null : "mic")}
             >
-              {groupedChannels.mic.length ? (
-                groupedChannels.mic.map(channel => (
-                  <option key={channel.id} value={channel.id}>
-                    {friendlyChannel(channel)}
-                  </option>
-                ))
-              ) : (
-                <option value="">Default microphone</option>
-              )}
-            </select>
+              {selectedMic ? friendlyChannel(selectedMic) : "Default microphone"}
+            </button>
           </div>
           <button
             className={micEnabled ? "small-toggle on" : "small-toggle"}
             type="button"
-            onClick={() => setMicEnabled(value => !value)}
+            onClick={() => {
+              setMicEnabled(value => !value);
+              setOpenMenu(null);
+            }}
           >
             {micEnabled ? "On" : "Off"}
           </button>
-        </label>
+          {openMenu === "mic" && micEnabled && (
+            <div className="picker-menu" role="menu">
+              {groupedChannels.mic.length ? (
+                groupedChannels.mic.map(channel => (
+                  <button
+                    key={channel.id}
+                    className={channel.id === selectedMicId ? "picker-option selected" : "picker-option"}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => selectMic(channel.id)}
+                  >
+                    <span>Microphone</span>
+                    <strong>{friendlyChannel(channel)}</strong>
+                  </button>
+                ))
+              ) : (
+                <div className="picker-empty">Default microphone</div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="recorder-row">
           {systemAudioEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}

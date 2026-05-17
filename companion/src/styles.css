@@ -27,7 +27,6 @@ html {
 
 button,
 textarea,
-select,
 input {
   font: inherit;
 }
@@ -47,7 +46,6 @@ button:disabled {
 
 button:focus-visible,
 textarea:focus,
-select:focus,
 input:focus-visible {
   outline: 3px solid #121212;
   outline-offset: 3px;
@@ -236,6 +234,7 @@ input:focus-visible {
 }
 
 .recorder-row {
+  position: relative;
   min-height: 72px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -245,42 +244,6 @@ input:focus-visible {
   border-radius: 24px;
   background: #f2f0ed;
   padding: 12px 14px;
-}
-
-.source-list {
-  display: grid;
-  gap: 8px;
-}
-
-.source-option {
-  min-height: 54px;
-  display: grid;
-  justify-items: start;
-  gap: 2px;
-  border: 1.5px solid transparent;
-  border-radius: 22px;
-  background: #f2f0ed;
-  padding: 10px 14px;
-  text-align: left;
-}
-
-.source-option span {
-  color: #5d5a54;
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.source-option strong {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
-
-.source-option.selected {
-  border-color: #121212;
-  background: #fffdfa;
 }
 
 .recorder-row > div {
@@ -300,10 +263,19 @@ input:focus-visible {
   font-weight: 760;
 }
 
-select {
+.picker-row {
+  z-index: 2;
+}
+
+.picker-row:has(.picker-menu) {
+  z-index: 5;
+}
+
+.picker-value {
   width: 100%;
   min-width: 0;
-  appearance: none;
+  display: block;
+  overflow: hidden;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -311,10 +283,83 @@ select {
   padding: 0;
   font-size: 16px;
   font-weight: 760;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-select:disabled {
+.picker-value:disabled {
   color: #8b8881;
+}
+
+.picker-chevron {
+  width: 36px;
+  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  background: transparent;
+}
+
+.picker-menu {
+  position: absolute;
+  left: 48px;
+  right: 14px;
+  top: calc(100% + 8px);
+  max-height: 212px;
+  display: grid;
+  gap: 6px;
+  overflow-y: auto;
+  border: 1px solid #dedad2;
+  border-radius: 22px;
+  background: #fffdfa;
+  padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #c9c5bd transparent;
+}
+
+.picker-option {
+  min-height: 52px;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background: transparent;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.picker-option:hover,
+.picker-option.selected {
+  background: #f2f0ed;
+}
+
+.picker-option.selected {
+  border-color: #121212;
+}
+
+.picker-option span,
+.picker-empty {
+  color: #6b675f;
+  font-size: 11px;
+}
+
+.picker-option span {
+  text-transform: uppercase;
+}
+
+.picker-option strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #121212;
+  font-size: 14px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-empty {
+  padding: 12px;
 }
 
 .small-toggle {
@@ -352,9 +397,28 @@ select:disabled {
 }
 
 .save-context input {
-  width: 17px;
-  height: 17px;
-  accent-color: #121212;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-content: center;
+  appearance: none;
+  border: 1.5px solid #9b968d;
+  border-radius: 6px;
+  background: #fffdfa;
+}
+
+.save-context input::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #121212;
+  content: "";
+  transform: scale(0);
+  transition: transform 120ms ease;
+}
+
+.save-context input:checked::before {
+  transform: scale(1);
 }
 
 .inline-error,
