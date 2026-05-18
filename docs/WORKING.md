@@ -84,7 +84,7 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 7. Pointer and annotation actions are posted as local client events with normalized screen coordinates.
 8. Typed overlay notes are posted as `user.note` client events so MCP tools can read them during a live watch.
 9. Backend starts `start_transcript`, `index_audio`, and visual scene indexing for RTStreams and uploaded window segments.
-10. The MCP server returns local evidence frames first for Window mode, then searches VideoDB indexes and recent annotation/note events when useful.
+10. The live MCP tool waits for `capture.stopped` by default, returns local evidence frames first for Window mode, then searches VideoDB indexes and recent annotation/note events when useful.
 
 ## Stop Capture
 
@@ -96,6 +96,7 @@ Press Stop in the companion. The backend keeps the local session state and event
 - MCP client says key missing: pass `SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env`.
 - MCP client sees no events: start the backend and companion first, then run `screen_aware_get_capture_status`.
 - Live watch says only segments were received: restart the backend after this update. Window mode now returns local evidence frames immediately instead of waiting only for VideoDB semantic search.
+- Live watch returns before you press Stop: restart the MCP connection. The current tool waits for `capture.stopped` by default and reports a `stop_reason` in its output.
 - Tauri cannot find capture binary: run `npm install` inside `companion/` or set `VIDEODB_CAPTURE_BINARY`.
 - VS Code/Cline launched before setting a user environment variable: restart the editor.
 

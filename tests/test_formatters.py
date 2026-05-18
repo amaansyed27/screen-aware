@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from screen_aware.formatters import compact_event, context_markdown
+from screen_aware.formatters import compact_event, context_markdown, live_watch_markdown
 
 
 def test_context_markdown_includes_videodb_match_and_event():
@@ -35,3 +35,19 @@ def test_context_markdown_includes_videodb_match_and_event():
     assert "login test" in rendered
     assert "Visual Evidence Frames" in rendered
     assert "C:/tmp/frame.jpg" in rendered
+
+
+def test_live_watch_markdown_includes_stop_reason():
+    rendered = live_watch_markdown(
+        {
+            "mode": "diagnose",
+            "objective": "watch the app",
+            "watched_seconds": 12,
+            "stop_reason": "capture_stopped",
+            "videodb_results": [],
+            "recent_events": [],
+            "warnings": [],
+        }
+    )
+
+    assert "Stop reason: `capture_stopped`" in rendered

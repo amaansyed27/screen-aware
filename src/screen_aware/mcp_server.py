@@ -18,6 +18,7 @@ from .videodb_service import VideoDBService
 
 
 mcp = FastMCP("screen_aware_mcp")
+MIN_STOP_BASED_WATCH_SECONDS = 300
 
 
 class ResponseFormat(str, Enum):
@@ -88,10 +89,10 @@ class WatchLiveInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     objective: str = Field(
-        default="Watch the active capture while the user reproduces a coding issue.",
+        default="Watch the active capture and report the visible evidence the user demonstrates.",
         min_length=1,
         max_length=500,
-        description="Natural language objective, e.g. 'watch while I reproduce the blank canvas bug'.",
+        description="Natural language objective, e.g. 'watch while I show the blank canvas behavior'.",
     )
     mode: LiveWatchMode = Field(
         default=LiveWatchMode.diagnose,
@@ -101,10 +102,20 @@ class WatchLiveInput(BaseModel):
         ),
     )
     duration_seconds: int = Field(
-        default=45,
+        default=300,
         ge=5,
-        le=180,
-        description="How long to keep the MCP call open while the user demonstrates the issue.",
+        le=900,
+        description=(
+            "Safety timeout for the live watch. By default the tool waits for capture.stopped; "
+            "set stop_on_capture_stop=false to use this as a fixed watch duration."
+        ),
+    )
+    stop_on_capture_stop: bool = Field(
+        default=True,
+        description=(
+            "Keep the MCP call open until the companion emits capture.stopped. "
+            "This mode enforces at least a 300 second safety window even if a shorter duration is supplied."
+        ),
     )
     settle_seconds: int = Field(
         default=3,
@@ -192,6 +203,34 @@ def _response_with_images(markdown: str, evidence_frames: list[dict[str, Any]], 
     return response
 
 
+def _capture_stopped_after(store: EventStore, *, session_id: str | None, started_at: float) -> bool:
+    events = store.recent_events(
+        limit=100,
+        since_unix=started_at,
+        session_id=session_id if isinstance(session_id, str) else None,
+    )
+    return any(event.get("event") == "capture.stopped" for event in events)
+
+
+async def _wait_for_live_watch_end(
+    store: EventStore,
+    *,
+    session_id: str | None,
+    started_at: float,
+    params: WatchLiveInput,
+) -> str:
+    if not params.stop_on_capture_stop:
+        await asyncio.sleep(params.duration_seconds)
+        return "timer_elapsed"
+
+    deadline = started_at + max(params.duration_seconds, MIN_STOP_BASED_WATCH_SECONDS)
+    while time.time() < deadline:
+        if _capture_stopped_after(store, session_id=session_id, started_at=started_at):
+            return "capture_stopped"
+        await asyncio.sleep(1)
+    return "timeout_waiting_for_capture_stop"
+
+
 @mcp.tool(
     name="screen_aware_watch_live_issue",
     structured_output=False,
@@ -223,6 +262,7 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> Any:
         mcp_live_objective=params.objective,
         mcp_live_started_at=utc_now_iso(),
         mcp_live_duration_seconds=params.duration_seconds,
+        mcp_live_stop_on_capture_stop=params.stop_on_capture_stop,
     )
     store.append_event(
         {
@@ -234,12 +274,22 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> Any:
                 "agent": _agent_name(),
                 "mode": params.mode.value,
                 "duration_seconds": params.duration_seconds,
-                "text": f"{_agent_name()} is watching live: {params.objective}",
+                "stop_on_capture_stop": params.stop_on_capture_stop,
+                "text": (
+                    f"{_agent_name()} is watching live until capture stops: {params.objective}"
+                    if params.stop_on_capture_stop
+                    else f"{_agent_name()} is watching live: {params.objective}"
+                ),
             },
         }
     )
 
-    await asyncio.sleep(params.duration_seconds)
+    stop_reason = await _wait_for_live_watch_end(
+        store,
+        session_id=session_id if isinstance(session_id, str) else None,
+        started_at=started_at,
+        params=params,
+    )
     if params.settle_seconds:
         await asyncio.sleep(params.settle_seconds)
 
@@ -274,18 +324,25 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> Any:
                 "VideoDB semantic search timed out before returning matches. "
                 "Use live events and retry after indexing catches up."
             ]
+    if stop_reason == "timeout_waiting_for_capture_stop":
+        warnings.append(
+            "Live watch hit its safety timeout before capture.stopped was received; "
+            "the companion may still be sharing."
+        )
+    watched_seconds = int(round(time.time() - started_at))
     payload = {
         "mode": params.mode.value,
         "objective": params.objective,
-        "watched_seconds": params.duration_seconds,
+        "watched_seconds": watched_seconds,
+        "stop_reason": stop_reason,
         "session": session,
         "videodb_results": results,
         "evidence_frames": evidence,
         "recent_events": [compact_event(event) for event in recent],
         "warnings": warnings,
         "agent_instruction": (
-            "Diagnostic mode: explain what you saw, likely root cause, proposed fix, and ask "
-            "the user before editing."
+            "Diagnostic mode: report only what is visible or captured, separate observation from "
+            "interpretation, explain likely fixes only when supported by evidence, and ask before editing."
             if params.mode == LiveWatchMode.diagnose
             else "Live edit mode: use this evidence to inspect code, patch the smallest likely "
             "fix, and run relevant verification."
@@ -306,7 +363,8 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> Any:
             "data": {
                 "agent": _agent_name(),
                 "mode": params.mode.value,
-                "text": f"{_agent_name()} finished live watch.",
+                "stop_reason": stop_reason,
+                "text": f"{_agent_name()} finished live watch: {stop_reason}.",
             },
         }
     )

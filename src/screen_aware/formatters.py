@@ -108,6 +108,8 @@ def live_watch_markdown(payload: dict[str, Any]) -> str:
         f"Objective: {objective}",
         f"Watched: `{payload.get('watched_seconds', '?')}` seconds",
     ]
+    if payload.get("stop_reason"):
+        lines.append(f"Stop reason: `{payload.get('stop_reason')}`")
 
     session = payload.get("session") or {}
     if session:
