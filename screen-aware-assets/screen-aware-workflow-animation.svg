@@ -1,0 +1,533 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">Screen-Aware Copilot Workflow Animation</title>
+  <desc id="desc">Animated explainer showing workspace capture, VideoDB real-time indexing, MCP tool access, and coding-agent feedback.</desc>
+  <defs>
+    <style><![CDATA[
+      :root {
+        --paper: #f7f4ee;
+        --ink: #101010;
+        --muted: #7b766f;
+        --line: #d9d3c8;
+        --panel: #fffdf8;
+        --soft: #ebe7df;
+        --accent: #09a7c3;
+        --accent-dark: #067b91;
+        --ok: #16a34a;
+        --warn: #ef4444;
+      }
+
+      svg {
+        background: var(--paper);
+        font-family: "Segoe UI", Arial, sans-serif;
+      }
+
+      .title {
+        font-size: 74px;
+        font-weight: 900;
+        fill: var(--ink);
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        font-size: 25px;
+        font-weight: 600;
+        fill: var(--muted);
+      }
+
+      .panel {
+        fill: var(--panel);
+        stroke: var(--ink);
+        stroke-width: 4;
+      }
+
+      .panel-soft {
+        fill: var(--soft);
+        stroke: var(--ink);
+        stroke-width: 3;
+      }
+
+      .thin {
+        stroke: var(--ink);
+        stroke-width: 3;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .thin-muted {
+        stroke: var(--line);
+        stroke-width: 3;
+        fill: none;
+        stroke-linecap: round;
+      }
+
+      .label {
+        font-size: 25px;
+        font-weight: 900;
+        fill: var(--ink);
+      }
+
+      .small {
+        font-size: 18px;
+        font-weight: 700;
+        fill: var(--muted);
+      }
+
+      .mono {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 18px;
+        font-weight: 700;
+        fill: var(--ink);
+      }
+
+      .mono-muted {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 16px;
+        font-weight: 700;
+        fill: var(--muted);
+      }
+
+      .mono-paper {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 18px;
+        font-weight: 700;
+        fill: var(--paper);
+      }
+
+      .mono-green {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 18px;
+        font-weight: 700;
+        fill: #86efac;
+      }
+
+      .mono-dark {
+        font-family: "Cascadia Mono", Consolas, monospace;
+        font-size: 18px;
+        font-weight: 700;
+        fill: var(--ink);
+      }
+
+      .step-sub {
+        font-size: 18px;
+        font-weight: 700;
+        fill: var(--muted);
+      }
+
+      .pill {
+        fill: var(--ink);
+      }
+
+      .pill-text {
+        fill: var(--panel);
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .source-row {
+        fill: var(--soft);
+      }
+
+      .accent {
+        fill: var(--accent);
+      }
+
+      .accent-stroke {
+        stroke: var(--accent);
+        stroke-width: 5;
+        fill: none;
+        stroke-linecap: round;
+      }
+
+      .connector {
+        stroke: var(--ink);
+        stroke-width: 4;
+        fill: none;
+        stroke-linecap: round;
+        stroke-dasharray: 14 16;
+        opacity: 0.24;
+      }
+
+      .packet {
+        fill: var(--accent);
+        stroke: var(--ink);
+        stroke-width: 3;
+      }
+
+      .packet-small {
+        fill: var(--paper);
+        stroke: var(--accent-dark);
+        stroke-width: 4;
+      }
+
+      .frame {
+        fill: #111;
+      }
+
+      .screen {
+        fill: #171717;
+        stroke: var(--ink);
+        stroke-width: 4;
+      }
+
+      .screen-line {
+        fill: #f7f4ee;
+        opacity: 0.72;
+      }
+
+      .code-green {
+        fill: #86efac;
+      }
+
+      .code-cyan {
+        fill: #67e8f9;
+      }
+
+      .scan {
+        animation: scanMove 3.2s linear infinite;
+      }
+
+      .wave-a {
+        animation: wavePulse 1.2s ease-in-out infinite;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .wave-b {
+        animation: wavePulse 1.2s ease-in-out infinite;
+        animation-delay: 0.2s;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .wave-c {
+        animation: wavePulse 1.2s ease-in-out infinite;
+        animation-delay: 0.4s;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .record-dot {
+        animation: recordPulse 1.15s ease-in-out infinite;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .index-ring {
+        animation: spin 5.5s linear infinite;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .index-ring-slow {
+        animation: spinReverse 8s linear infinite;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+
+      .typing-1 { animation: appear 12s steps(1, end) infinite; }
+      .typing-2 { animation: appear2 12s steps(1, end) infinite; }
+      .typing-3 { animation: appear3 12s steps(1, end) infinite; }
+      .typing-4 { animation: appear4 12s steps(1, end) infinite; }
+
+      .patch-add {
+        animation: patchGlow 2.6s ease-in-out infinite;
+      }
+
+      .overlay-bar {
+        animation: overlayFloat 4s ease-in-out infinite;
+      }
+
+      .cursor {
+        animation: cursorMove 6s ease-in-out infinite;
+      }
+
+      .step-active-1 { animation: stepOne 16s linear infinite; }
+      .step-active-2 { animation: stepTwo 16s linear infinite; }
+      .step-active-3 { animation: stepThree 16s linear infinite; }
+      .step-active-4 { animation: stepFour 16s linear infinite; }
+
+      @keyframes scanMove {
+        0% { transform: translateY(0); opacity: 0; }
+        8% { opacity: 0.9; }
+        80% { opacity: 0.9; }
+        100% { transform: translateY(132px); opacity: 0; }
+      }
+
+      @keyframes wavePulse {
+        0%, 100% { transform: scaleY(0.45); opacity: 0.45; }
+        50% { transform: scaleY(1); opacity: 1; }
+      }
+
+      @keyframes recordPulse {
+        0%, 100% { transform: scale(0.85); opacity: 0.55; }
+        50% { transform: scale(1.16); opacity: 1; }
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes spinReverse {
+        to { transform: rotate(-360deg); }
+      }
+
+      @keyframes appear {
+        0%, 12% { opacity: 0; }
+        13%, 100% { opacity: 1; }
+      }
+
+      @keyframes appear2 {
+        0%, 28% { opacity: 0; }
+        29%, 100% { opacity: 1; }
+      }
+
+      @keyframes appear3 {
+        0%, 48% { opacity: 0; }
+        49%, 100% { opacity: 1; }
+      }
+
+      @keyframes appear4 {
+        0%, 66% { opacity: 0; }
+        67%, 100% { opacity: 1; }
+      }
+
+      @keyframes patchGlow {
+        0%, 100% { opacity: 0.7; }
+        50% { opacity: 1; }
+      }
+
+      @keyframes overlayFloat {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-8px); }
+      }
+
+      @keyframes cursorMove {
+        0%, 100% { transform: translate(0, 0); }
+        25% { transform: translate(95px, -34px); }
+        50% { transform: translate(170px, 18px); }
+        75% { transform: translate(58px, 52px); }
+      }
+
+      @keyframes stepOne {
+        0%, 22% { fill: #d7f3f7; }
+        23%, 100% { fill: var(--soft); }
+      }
+
+      @keyframes stepTwo {
+        0%, 22% { fill: var(--soft); }
+        23%, 46% { fill: #d7f3f7; }
+        47%, 100% { fill: var(--soft); }
+      }
+
+      @keyframes stepThree {
+        0%, 46% { fill: var(--soft); }
+        47%, 70% { fill: #d7f3f7; }
+        71%, 100% { fill: var(--soft); }
+      }
+
+      @keyframes stepFour {
+        0%, 70% { fill: var(--soft); }
+        71%, 94% { fill: #d7f3f7; }
+        95%, 100% { fill: var(--soft); }
+      }
+    ]]></style>
+
+    <path id="flow-1" d="M 520 402 C 565 402, 570 402, 618 402" />
+    <path id="flow-2" d="M 900 402 C 938 402, 938 402, 985 402" />
+    <path id="flow-3" d="M 1326 402 C 1360 402, 1364 402, 1405 402" />
+    <path id="flow-4" d="M 1510 618 C 1240 804, 760 802, 470 617" />
+  </defs>
+
+  <rect width="1920" height="1080" fill="#f7f4ee" />
+
+  <g transform="translate(92 72)">
+    <g transform="translate(0 0)">
+      <rect x="0" y="4" width="58" height="58" rx="18" fill="#101010" />
+      <path d="M 19 41 C 27 51, 45 47, 42 32 C 39 17, 16 21, 19 35 C 21 43, 34 43, 35 34" fill="none" stroke="#f7f4ee" stroke-width="5" stroke-linecap="round" />
+      <path d="M 44 14 L 47 22 L 55 25 L 47 28 L 44 36 L 41 28 L 33 25 L 41 22 Z" fill="#09a7c3" />
+    </g>
+    <text class="title" x="78" y="62">Screen-Aware</text>
+    <text class="subtitle" x="82" y="104">live workspace perception for coding agents</text>
+  </g>
+
+  <g transform="translate(120 190)">
+    <rect class="panel" x="0" y="0" width="430" height="430" rx="34" />
+    <text class="label" x="42" y="58">Developer Workspace</text>
+    <text class="small" x="42" y="88">screen, terminal, app, microphone</text>
+
+    <rect class="screen" x="42" y="124" width="346" height="216" rx="18" />
+    <rect x="42" y="124" width="346" height="36" rx="18" fill="#2d2d2d" />
+    <circle cx="67" cy="142" r="7" fill="#ef4444" />
+    <circle cx="91" cy="142" r="7" fill="#d9d3c8" />
+    <circle cx="115" cy="142" r="7" fill="#d9d3c8" />
+
+    <rect x="72" y="184" width="152" height="12" rx="6" class="code-cyan" />
+    <rect x="72" y="212" width="248" height="12" rx="6" class="screen-line" />
+    <rect x="72" y="240" width="204" height="12" rx="6" class="screen-line" />
+    <rect x="72" y="270" width="276" height="12" rx="6" class="code-green" />
+    <rect x="72" y="300" width="168" height="12" rx="6" class="screen-line" />
+
+    <rect class="scan" x="52" y="176" width="326" height="44" rx="16" fill="#09a7c3" opacity="0.16" />
+
+    <g transform="translate(248 246)">
+      <g class="cursor">
+        <path d="M 0 0 L 0 58 L 17 43 L 31 72 L 45 65 L 30 37 L 52 37 Z" fill="#f7f4ee" stroke="#101010" stroke-width="3" />
+      </g>
+    </g>
+
+    <g transform="translate(47 372)">
+      <rect class="source-row" x="0" y="0" width="346" height="42" rx="21" />
+      <circle class="record-dot" cx="30" cy="21" r="8" fill="#ef4444" />
+      <text class="mono" x="52" y="27">bug reproduced live</text>
+    </g>
+
+    <g transform="translate(308 362)">
+      <rect class="wave-a" x="0" y="8" width="8" height="40" rx="4" fill="#101010" />
+      <rect class="wave-b" x="18" y="0" width="8" height="56" rx="4" fill="#101010" />
+      <rect class="wave-c" x="36" y="12" width="8" height="32" rx="4" fill="#101010" />
+    </g>
+  </g>
+
+  <g transform="translate(620 190)">
+    <rect class="panel" x="0" y="0" width="330" height="430" rx="34" />
+    <text class="label" x="38" y="58">Companion App</text>
+    <text class="small" x="38" y="88">window, mic, system audio</text>
+
+    <g transform="translate(31 122)">
+      <g class="overlay-bar">
+        <rect x="0" y="0" width="268" height="56" rx="28" fill="#101010" />
+        <circle class="record-dot" cx="32" cy="28" r="8" fill="#ef4444" />
+        <text class="pill-text" x="52" y="35">Sharing</text>
+        <circle cx="148" cy="28" r="22" fill="#f7f4ee" opacity="0.94" />
+        <path d="M 139 22 L 157 22 L 157 34 L 139 34 Z M 145 34 L 151 34 L 151 40 L 145 40 Z" fill="none" stroke="#101010" stroke-width="3" stroke-linejoin="round" />
+        <circle cx="205" cy="28" r="22" fill="#f7f4ee" opacity="0.94" />
+        <path d="M 205 16 L 205 30 M 197 25 C 197 36, 213 36, 213 25 M 199 42 L 211 42" class="thin" />
+        <circle cx="244" cy="28" r="10" fill="#09a7c3" />
+      </g>
+    </g>
+
+    <rect class="source-row" x="35" y="212" width="260" height="68" rx="24" />
+      <text class="small" x="96" y="238">Source</text>
+      <text class="label" x="96" y="264" font-size="22">App window</text>
+    <path d="M 51 236 L 51 258 L 72 258 M 51 236 L 82 236 L 82 258 L 72 258 M 61 268 L 72 268 L 72 258" class="thin" />
+
+    <rect class="source-row" x="35" y="296" width="260" height="68" rx="24" />
+      <text class="small" x="96" y="322">Agent note</text>
+      <text class="label" x="96" y="348" font-size="22">typed or spoken</text>
+    <path d="M 54 326 L 54 348 L 80 348 L 90 360 L 90 326 Z" fill="none" stroke="#101010" stroke-width="3" stroke-linejoin="round" />
+  </g>
+
+  <g transform="translate(1010 190)">
+    <rect class="panel" x="0" y="0" width="360" height="430" rx="34" />
+    <text class="label" x="42" y="58">VideoDB Indexing</text>
+    <text class="small" x="42" y="88">visual frames plus audio transcript</text>
+
+    <g transform="translate(180 218)">
+      <circle r="94" fill="#ebe7df" stroke="#101010" stroke-width="4" />
+      <circle class="index-ring" r="72" fill="none" stroke="#09a7c3" stroke-width="10" stroke-linecap="round" stroke-dasharray="72 34 18 28" />
+      <circle class="index-ring-slow" r="46" fill="none" stroke="#101010" stroke-width="7" stroke-linecap="round" stroke-dasharray="32 22 44 16" />
+      <circle r="17" fill="#101010" />
+      <text class="mono" x="0" y="112" text-anchor="middle">visual + audio index</text>
+    </g>
+
+    <g transform="translate(42 338)">
+      <rect class="panel-soft" x="0" y="0" width="276" height="52" rx="16" />
+      <rect x="18" y="17" width="74" height="10" rx="5" fill="#09a7c3" />
+      <rect x="108" y="17" width="116" height="10" rx="5" fill="#101010" opacity="0.7" />
+      <rect x="18" y="34" width="198" height="8" rx="4" fill="#101010" opacity="0.22" />
+    </g>
+  </g>
+
+  <g transform="translate(1430 190)">
+    <rect class="panel" x="0" y="0" width="370" height="430" rx="34" />
+    <text class="label" x="42" y="58">MCP Coding Agent</text>
+    <text class="small" x="42" y="88">look, listen, inspect, patch</text>
+
+    <rect x="42" y="120" width="286" height="240" rx="18" fill="#101010" />
+    <text class="mono-green" x="64" y="158">&gt; watch_live</text>
+    <g class="typing-1">
+      <text class="mono-paper" x="64" y="196">saw: blank canvas</text>
+    </g>
+    <g class="typing-2">
+      <text class="mono-paper" x="64" y="232">heard: game is frozen</text>
+    </g>
+    <g class="typing-3">
+      <text class="mono-paper" x="64" y="268">cause: loop not mounted</text>
+    </g>
+    <g class="typing-4">
+      <rect class="patch-add" x="62" y="298" width="236" height="32" rx="8" fill="#16a34a" opacity="0.9" />
+      <text class="mono-dark" x="76" y="320">apply focused fix?</text>
+    </g>
+
+    <g transform="translate(42 376)">
+      <rect class="source-row" x="0" y="0" width="286" height="38" rx="19" />
+      <circle cx="24" cy="19" r="7" fill="#16a34a" />
+      <text class="mono-muted" x="44" y="25">asks before edits</text>
+    </g>
+  </g>
+
+  <path class="connector" d="M 550 405 L 620 405" />
+  <path class="connector" d="M 950 405 L 1010 405" />
+  <path class="connector" d="M 1370 405 L 1430 405" />
+
+  <circle class="packet" r="15">
+    <animateMotion dur="4s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#flow-1" />
+    </animateMotion>
+  </circle>
+  <rect class="packet-small" width="26" height="26" rx="8" transform="translate(-13 -13)">
+    <animateMotion dur="4.5s" begin="1.2s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#flow-2" />
+    </animateMotion>
+  </rect>
+  <circle class="packet" r="15">
+    <animateMotion dur="4.2s" begin="2.1s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#flow-3" />
+    </animateMotion>
+  </circle>
+  <rect class="packet-small" width="30" height="30" rx="9" transform="translate(-15 -15)">
+    <animateMotion dur="8s" begin="0.4s" repeatCount="indefinite" rotate="auto">
+      <mpath href="#flow-4" />
+    </animateMotion>
+  </rect>
+
+  <g transform="translate(132 740)">
+    <text class="label" x="0" y="0">How the live loop works</text>
+    <text class="small" x="0" y="36">Screen-Aware keeps the UI lightweight while the MCP server gives the coding agent grounded context.</text>
+
+    <g transform="translate(0 88)">
+      <rect class="step-active-1" x="0" y="0" width="390" height="92" rx="28" />
+      <text x="36" y="39" class="label" font-size="23">1. Share workspace</text>
+      <text x="36" y="66" class="step-sub">window, full screen, mic, notes</text>
+    </g>
+
+    <g transform="translate(430 88)">
+      <rect class="step-active-2" x="0" y="0" width="390" height="92" rx="28" />
+      <text x="36" y="39" class="label" font-size="23">2. Stream segments</text>
+      <text x="36" y="66" class="step-sub">frames and audio move live</text>
+    </g>
+
+    <g transform="translate(860 88)">
+      <rect class="step-active-3" x="0" y="0" width="390" height="92" rx="28" />
+      <text x="36" y="39" class="label" font-size="23">3. Index in VideoDB</text>
+      <text x="36" y="66" class="step-sub">searchable visual evidence</text>
+    </g>
+
+    <g transform="translate(1290 88)">
+      <rect class="step-active-4" x="0" y="0" width="390" height="92" rx="28" />
+      <text x="36" y="39" class="label" font-size="23">4. Agent fixes code</text>
+      <text x="36" y="66" class="step-sub">Codex asks, then patches</text>
+    </g>
+  </g>
+
+  <g transform="translate(1332 72)">
+    <rect x="0" y="0" width="456" height="84" rx="28" fill="#101010" />
+    <circle class="record-dot" cx="48" cy="42" r="10" fill="#ef4444" />
+    <text x="72" y="36" fill="#f7f4ee" font-size="20" font-weight="900">LIVE CAPTURE</text>
+    <text x="72" y="62" fill="#d9d3c8" font-size="17" font-weight="700">watch until sharing stops</text>
+    <path d="M 314 28 L 350 28 L 350 56 L 314 56 Z M 324 56 L 340 56" fill="none" stroke="#f7f4ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 384 28 L 384 48 M 372 42 C 372 58, 396 58, 396 42 M 376 64 L 392 64" fill="none" stroke="#f7f4ee" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>
