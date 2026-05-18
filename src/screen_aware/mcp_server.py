@@ -5,9 +5,10 @@ import asyncio
 import os
 import time
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import get_settings
@@ -170,6 +171,7 @@ def _build_payload(
     results: list[dict[str, Any]],
     recent_events: list[dict[str, Any]],
     warnings: list[str],
+    evidence_frames: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "query": query,
@@ -177,11 +179,22 @@ def _build_payload(
         "videodb_results": results,
         "recent_events": [compact_event(event) for event in recent_events],
         "warnings": warnings,
+        "evidence_frames": evidence_frames or [],
     }
+
+
+def _response_with_images(markdown: str, evidence_frames: list[dict[str, Any]], *, limit: int = 4) -> list[Any]:
+    response: list[Any] = [markdown]
+    for frame in evidence_frames[-limit:]:
+        path = frame.get("path") if isinstance(frame, dict) else None
+        if isinstance(path, str) and Path(path).exists():
+            response.append(Image(path=path))
+    return response
 
 
 @mcp.tool(
     name="screen_aware_watch_live_issue",
+    structured_output=False,
     annotations={
         "title": "Watch Live Issue",
         "readOnlyHint": True,
@@ -190,7 +203,7 @@ def _build_payload(
         "openWorldHint": True,
     },
 )
-async def screen_aware_watch_live_issue(params: WatchLiveInput) -> str:
+async def screen_aware_watch_live_issue(params: WatchLiveInput) -> Any:
     """Keep the MCP call open while the user demonstrates a bug, then return evidence.
 
     Use this for simple user prompts like "use Screen-Aware live" or "watch while I show you".
@@ -236,19 +249,38 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> str:
         since_unix=started_at,
         session_id=session_id if isinstance(session_id, str) else None,
     )
-    results, warnings = await service.search_session(
-        query=params.objective,
+    evidence = await service.local_visual_evidence(
         session_id=session_id if isinstance(session_id, str) else None,
-        modalities={"visual", "audio"},
-        limit=params.limit,
-        score_threshold=0.25,
+        limit=min(params.limit, 8),
     )
+    if evidence:
+        results: list[dict[str, Any]] = []
+        warnings: list[str] = []
+    else:
+        try:
+            results, warnings = await asyncio.wait_for(
+                service.search_session(
+                    query=params.objective,
+                    session_id=session_id if isinstance(session_id, str) else None,
+                    modalities={"visual", "audio"},
+                    limit=params.limit,
+                    score_threshold=0.25,
+                ),
+                timeout=10,
+            )
+        except TimeoutError:
+            results = []
+            warnings = [
+                "VideoDB semantic search timed out before returning matches. "
+                "Use live events and retry after indexing catches up."
+            ]
     payload = {
         "mode": params.mode.value,
         "objective": params.objective,
         "watched_seconds": params.duration_seconds,
         "session": session,
         "videodb_results": results,
+        "evidence_frames": evidence,
         "recent_events": [compact_event(event) for event in recent],
         "warnings": warnings,
         "agent_instruction": (
@@ -278,7 +310,10 @@ async def screen_aware_watch_live_issue(params: WatchLiveInput) -> str:
             },
         }
     )
-    return dumps(payload) if params.response_format == ResponseFormat.json else live_watch_markdown(payload)
+    if params.response_format == ResponseFormat.json:
+        return dumps(payload)
+    markdown = live_watch_markdown(payload)
+    return _response_with_images(markdown, evidence)
 
 
 @mcp.tool(
@@ -314,12 +349,17 @@ async def screen_aware_analyze_screen_context(params: AnalyzeScreenInput) -> str
         since_unix=time.time() - params.lookback_seconds,
         session_id=params.session_id or (session or {}).get("session_id"),
     )
+    evidence = await service.local_visual_evidence(
+        session_id=params.session_id or (session or {}).get("session_id"),
+        limit=min(params.limit, 6),
+    )
     payload = _build_payload(
         query=params.query,
         session=session,
         results=results,
         recent_events=recent,
         warnings=warnings,
+        evidence_frames=evidence,
     )
     return dumps(payload) if params.response_format == ResponseFormat.json else context_markdown(payload)
 
@@ -357,12 +397,17 @@ async def screen_aware_query_workflow_history(params: QueryWorkflowInput) -> str
         limit=params.limit,
         session_id=params.session_id or (session or {}).get("session_id"),
     )
+    evidence = await service.local_visual_evidence(
+        session_id=params.session_id or (session or {}).get("session_id"),
+        limit=min(params.limit, 6),
+    )
     payload = _build_payload(
         query=params.query,
         session=session,
         results=results,
         recent_events=recent,
         warnings=warnings,
+        evidence_frames=evidence,
     )
     return dumps(payload) if params.response_format == ResponseFormat.json else context_markdown(payload)
 
@@ -380,7 +425,7 @@ async def screen_aware_query_workflow_history(params: QueryWorkflowInput) -> str
 async def screen_aware_get_live_context(params: LiveContextInput) -> str:
     """Return the latest Screen-Aware events without running a semantic search."""
 
-    store, _ = _service()
+    store, service = _service()
     _mark_agent_seen(store, "screen_aware_get_live_context")
     state = store.read_state()
     session = store.get_session()
@@ -393,6 +438,10 @@ async def screen_aware_get_live_context(params: LiveContextInput) -> str:
         "backend": state.get("backend", {}),
         "session": session,
         "recent_events": [compact_event(event) for event in events],
+        "evidence_frames": await service.local_visual_evidence(
+            session_id=(session or {}).get("session_id"),
+            limit=min(params.limit, 6),
+        ),
     }
     if params.response_format == ResponseFormat.json:
         return dumps(payload)
@@ -407,6 +456,11 @@ async def screen_aware_get_live_context(params: LiveContextInput) -> str:
         lines.append(f"- `{event.get('ts')}` `{event.get('channel') or event.get('event')}`: {event.get('text')}")
     if not payload["recent_events"]:
         lines.append("- No live events in the selected window.")
+    if payload["evidence_frames"]:
+        lines.append("")
+        lines.append("## Visual Evidence Frames")
+        for item in payload["evidence_frames"]:
+            lines.append(f"- Segment `{item.get('sequence')}`: {item.get('path')}")
     return "\n".join(lines)
 
 

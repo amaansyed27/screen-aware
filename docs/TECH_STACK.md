@@ -7,6 +7,7 @@
 - FastMCP from the Python MCP SDK for stdio MCP server support.
 - Pydantic settings and validation for environment-driven config.
 - VideoDB Python SDK with capture support for CaptureSession, RTStream indexing, transcript, and semantic search.
+- imageio-ffmpeg for local evidence-frame extraction from selected-window WebM segments when VideoDB scene indexes are still processing.
 - JSON/JSONL local state for simple inspection and multi-client sharing.
 
 ## Desktop Companion

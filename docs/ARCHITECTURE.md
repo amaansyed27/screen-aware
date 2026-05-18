@@ -14,6 +14,7 @@ flowchart LR
     BIN -->|"screen/mic/system streams"| VDB
     UI -->|"Window: getDisplayMedia + WebM segments"| API
     API -->|"upload + index window segments"| VDB
+    API -->|"extract evidence frames"| STORE
     UI -->|"pointer and annotation events"| API
     VDB -->|"websocket or webhook events"| API
     API -->|"start_transcript, index_audio, index_visuals"| VDB
@@ -44,20 +45,20 @@ flowchart LR
 
 - `src/screen_aware/api.py` runs FastAPI on `127.0.0.1:8787` by default.
 - `POST /api/sessions` creates a real VideoDB CaptureSession and returns a client token to the companion.
-- `POST /api/window-capture/segments` accepts native-window WebM segments from the companion and queues VideoDB upload/indexing.
+- `POST /api/window-capture/segments` accepts native-window WebM segments from the companion, extracts local evidence frames, and queues VideoDB upload/indexing.
 - `POST /webhooks/videodb` and the backend websocket listener normalize VideoDB events into local state.
 - `GET /api/status`, `GET /api/events`, and `POST /api/query` provide local control-plane inspection.
 - Pointer, pen, highlighter, clear actions, and typed context notes are stored as client events.
 
 ### VideoDB Service
 
-- `src/screen_aware/videodb_service.py` calls `videodb.connect`, creates CaptureSessions, generates client tokens, opens VideoDB websocket listeners, uploads selected-window segments, starts transcripts, starts audio indexing, starts visual indexing, and searches RTStreams plus uploaded window media.
+- `src/screen_aware/videodb_service.py` calls `videodb.connect`, creates CaptureSessions, generates client tokens, opens VideoDB websocket listeners, uploads selected-window segments, extracts evidence frames, starts transcripts, starts audio indexing, starts visual indexing, and searches RTStreams plus uploaded window media.
 - SDK compatibility wrappers are intentionally thin; they call the real VideoDB SDK and only adapt minor signature differences.
 
 ### Local State
 
 - `.screen-aware/state.json` stores backend status, current session, RTStreams, and indexing metadata.
-- `.screen-aware/events.jsonl` stores recent lifecycle, transcript, visual, audio, annotation, note, and client events.
+- `.screen-aware/events.jsonl` stores recent lifecycle, transcript, visual, audio, annotation, note, evidence-frame, and client events.
 - This folder is ignored by git because it contains local runtime state and potentially sensitive workflow context.
 
 ### MCP Server
@@ -77,7 +78,7 @@ flowchart LR
 7. If the user points, draws, or types a context note, the companion posts those events to the backend.
 8. VideoDB emits `capture_session.active` for RTStreams, and the backend records window segment lifecycle events.
 9. Backend starts transcript, audio indexing, and visual indexing for active RTStreams and uploaded window segments.
-10. MCP tools search the indexed RTStreams/window segments plus recent annotation/note events and return evidence to the CLI agent.
+10. MCP tools return local evidence frames for selected-window capture and search the indexed RTStreams/window segments plus recent annotation/note events.
 
 ## Security Boundaries
 

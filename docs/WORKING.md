@@ -79,12 +79,12 @@ C:\Users\Amaan\Downloads\screen-aware\companion\src-tauri\target\release\screen-
 2. Backend creates a VideoDB CaptureSession and returns a client token.
 3. Full screen mode initializes the VideoDB capture binary with the token.
 4. Full screen mode lists capture channels and starts recording selected channel IDs.
-5. Window mode uses the native WebView window picker, records WebM segments locally, and uploads each segment to VideoDB.
+5. Window mode uses the native WebView window picker, records WebM segments locally, extracts local evidence frames, and uploads each segment to VideoDB.
 6. VideoDB emits lifecycle events for RTStreams, while the backend records uploaded window segment events.
 7. Pointer and annotation actions are posted as local client events with normalized screen coordinates.
 8. Typed overlay notes are posted as `user.note` client events so MCP tools can read them during a live watch.
-9. Backend starts `start_transcript`, `index_audio`, and `index_visuals` for RTStreams and uploaded window segments.
-10. The MCP server searches those indexes and recent annotation/note events when an agent calls a tool.
+9. Backend starts `start_transcript`, `index_audio`, and visual scene indexing for RTStreams and uploaded window segments.
+10. The MCP server returns local evidence frames first for Window mode, then searches VideoDB indexes and recent annotation/note events when useful.
 
 ## Stop Capture
 
@@ -95,6 +95,7 @@ Press Stop in the companion. The backend keeps the local session state and event
 - Backend says key missing: make sure `.env` exists and contains `VIDEO_DB_API_KEY`.
 - MCP client says key missing: pass `SCREEN_AWARE_ENV_FILE=C:\Users\Amaan\Downloads\screen-aware\.env`.
 - MCP client sees no events: start the backend and companion first, then run `screen_aware_get_capture_status`.
+- Live watch says only segments were received: restart the backend after this update. Window mode now returns local evidence frames immediately instead of waiting only for VideoDB semantic search.
 - Tauri cannot find capture binary: run `npm install` inside `companion/` or set `VIDEODB_CAPTURE_BINARY`.
 - VS Code/Cline launched before setting a user environment variable: restart the editor.
 

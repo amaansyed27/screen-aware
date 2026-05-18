@@ -24,10 +24,14 @@ def test_context_markdown_includes_videodb_match_and_event():
                 }
             )
         ],
+        "evidence_frames": [
+            {"source_label": "Game window", "sequence": 3, "path": "C:/tmp/frame.jpg"}
+        ],
         "warnings": [],
     }
 
     rendered = context_markdown(payload)
     assert "AssertionError" in rendered
     assert "login test" in rendered
-
+    assert "Visual Evidence Frames" in rendered
+    assert "C:/tmp/frame.jpg" in rendered

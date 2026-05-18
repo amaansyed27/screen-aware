@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import re
+import shutil
+import subprocess
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -22,6 +25,13 @@ Extract bug symptoms, expected behavior, observed behavior, filenames, commands,
 error messages, and hypotheses. Keep the summary grounded in what was said."""
 
 DEFAULT_SELECT_FRAMES = ["first", "middle", "last"]
+READY_INDEX_STATUSES = {"ready", "completed", "complete", "indexed", "processed", "success", "succeeded"}
+NO_SPEECH_MARKERS = (
+    "failed to detect the language",
+    "no spoken data found",
+    "no speech",
+    "no audio",
+)
 
 
 class VideoDBService:
@@ -229,6 +239,13 @@ class VideoDBService:
         """Upload a browser-selected window segment to VideoDB and start searchable indexes."""
 
         segment_name = f"screen-aware-window-{session_id}-{sequence:04d}"
+        evidence_frames = self._extract_evidence_frames(
+            session_id=session_id,
+            file_path=file_path,
+            sequence=sequence,
+            source_label=source_label,
+            max_frames=1,
+        )
         try:
             video = self.collection().upload(
                 file_path=str(file_path),
@@ -239,18 +256,13 @@ class VideoDBService:
             errors: list[str] = []
             visual_index = None
             try:
-                visual_index = self._call_supported(
-                    video.index_visuals,
-                    prompt=VISUAL_PROMPT,
-                    batch_config=self._visual_batch_config(),
-                    model_name=self.settings.visual_model,
-                    name=f"screen_aware_window_visual_{sequence:04d}",
-                )
+                visual_index = self._index_video_visuals(video, sequence)
             except Exception as exc:
                 errors.append(f"visual: {type(exc).__name__}: {exc}")
 
             audio_index = None
             transcript_text = None
+            audio_notice = None
             if contains_audio:
                 try:
                     self._call_supported(video.index_spoken_words, force=True)
@@ -271,7 +283,10 @@ class VideoDBService:
                             }
                         )
                 except Exception as exc:
-                    errors.append(f"transcript: {type(exc).__name__}: {exc}")
+                    if self._is_no_speech_error(exc):
+                        audio_notice = "No spoken data was detected in this segment."
+                    else:
+                        errors.append(f"transcript: {type(exc).__name__}: {exc}")
                 try:
                     audio_index = self._call_supported(
                         video.index_audio,
@@ -296,7 +311,10 @@ class VideoDBService:
                 "contains_audio": contains_audio,
                 "visual_index_id": self._index_id(visual_index),
                 "audio_index_id": self._index_id(audio_index),
+                "visual_index_status": self._scene_index_status(video, self._index_id(visual_index)),
                 "transcript_text": transcript_text,
+                "audio_notice": audio_notice,
+                "evidence_frames": evidence_frames,
                 "errors": errors,
             }
             self.store.append_session_item(session_id, "uploaded_videos", item)
@@ -309,7 +327,9 @@ class VideoDBService:
                     "capture_session_id": session_id,
                     "data": {
                         **item,
-                        "text": self._window_segment_event_text(sequence, source_label, indexed, errors),
+                        "text": self._window_segment_event_text(
+                            sequence, source_label, indexed, errors, audio_notice
+                        ),
                     },
                 }
             )
@@ -349,6 +369,45 @@ class VideoDBService:
             "select_frames": DEFAULT_SELECT_FRAMES[: min(frame_count, len(DEFAULT_SELECT_FRAMES))],
         }
 
+    def _video_scene_config(self) -> dict[str, Any]:
+        frame_count = max(1, self.settings.visual_frame_count)
+        select_frames = DEFAULT_SELECT_FRAMES[: min(frame_count, len(DEFAULT_SELECT_FRAMES))]
+        return {
+            "time": self.settings.visual_batch_seconds,
+            "frame_count": frame_count,
+            "select_frames": select_frames,
+        }
+
+    def _index_video_visuals(self, video: Any, sequence: int) -> Any:
+        try:
+            from videodb import SceneExtractionType
+        except Exception:
+            SceneExtractionType = None  # type: ignore[assignment]
+
+        if hasattr(video, "index_scenes") and SceneExtractionType is not None:
+            try:
+                return self._call_supported(
+                    video.index_scenes,
+                    extraction_type=SceneExtractionType.time_based,
+                    extraction_config=self._video_scene_config(),
+                    prompt=VISUAL_PROMPT,
+                    model_name=self.settings.visual_model,
+                    name=f"screen_aware_window_visual_{sequence:04d}",
+                )
+            except Exception as exc:
+                existing = self._index_id_from_error(exc)
+                if existing:
+                    return existing
+                raise
+
+        return self._call_supported(
+            video.index_visuals,
+            prompt=VISUAL_PROMPT,
+            batch_config=self._visual_batch_config(),
+            model_name=self.settings.visual_model,
+            name=f"screen_aware_window_visual_{sequence:04d}",
+        )
+
     @staticmethod
     def _transcript_text(video: Any) -> str | None:
         try:
@@ -362,16 +421,204 @@ class VideoDBService:
 
     @staticmethod
     def _window_segment_event_text(
-        sequence: int, source_label: str, indexed: bool, errors: list[str]
+        sequence: int,
+        source_label: str,
+        indexed: bool,
+        errors: list[str],
+        audio_notice: str | None = None,
     ) -> str:
+        suffix = f" {audio_notice}" if audio_notice else ""
         if indexed and errors:
             return (
                 f"VideoDB partially indexed window segment {sequence} from {source_label}; "
                 f"{'; '.join(errors)}"
             )
         if indexed:
-            return f"VideoDB indexed window segment {sequence} from {source_label}."
+            return f"VideoDB indexed window segment {sequence} from {source_label}.{suffix}"
         return f"VideoDB failed to index window segment {sequence}: {'; '.join(errors)}"
+
+    def _extract_evidence_frames(
+        self,
+        *,
+        session_id: str,
+        file_path: Path,
+        sequence: int,
+        source_label: str,
+        max_frames: int,
+    ) -> list[dict[str, Any]]:
+        ffmpeg = self._ffmpeg_path()
+        if not ffmpeg or max_frames <= 0:
+            return []
+        if not file_path.exists() or file_path.stat().st_size <= 0:
+            return []
+
+        evidence_dir = self.settings.data_dir / "evidence-frames" / self._safe_path_part(session_id)
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+        output_pattern = evidence_dir / f"segment-{sequence:04d}-frame-%02d.jpg"
+        command = [
+            ffmpeg,
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(file_path),
+            "-vf",
+            "fps=1/3,scale=1280:-1",
+            "-frames:v",
+            str(max_frames),
+            str(output_pattern),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=20)
+        except Exception as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+                detail = f"{detail}; {exc.stderr.strip()}"
+            self.store.append_event(
+                {
+                    "source": "local",
+                    "channel": "visual_frame",
+                    "event": "window.segment.frame_failed",
+                    "capture_session_id": session_id,
+                    "data": {
+                        "sequence": sequence,
+                        "source_label": source_label,
+                        "file_path": str(file_path),
+                        "error": detail,
+                        "text": f"Local screen evidence frame extraction failed for segment {sequence}: {detail}",
+                    },
+                }
+            )
+            return []
+
+        frames: list[dict[str, Any]] = []
+        for frame_path in sorted(evidence_dir.glob(f"segment-{sequence:04d}-frame-*.jpg")):
+            item = {
+                "sequence": sequence,
+                "source_label": source_label,
+                "path": str(frame_path.resolve()),
+                "file_path": str(file_path),
+                "text": f"Local screen evidence frame for segment {sequence} from {source_label}.",
+            }
+            frames.append(item)
+            self.store.append_session_item(session_id, "evidence_frames", item, max_items=150)
+            self.store.append_event(
+                {
+                    "source": "local",
+                    "channel": "visual_frame",
+                    "event": "window.segment.frame_extracted",
+                    "capture_session_id": session_id,
+                    "data": item,
+                }
+            )
+        return frames
+
+    async def local_visual_evidence(
+        self, *, session_id: str | None, limit: int
+    ) -> list[dict[str, Any]]:
+        return await asyncio.to_thread(self._local_visual_evidence_sync, session_id, limit)
+
+    def _local_visual_evidence_sync(
+        self, session_id: str | None, limit: int
+    ) -> list[dict[str, Any]]:
+        session = self.store.get_session(session_id)
+        if not session or limit <= 0:
+            return []
+
+        frames = [
+            frame
+            for frame in session.get("evidence_frames") or []
+            if isinstance(frame, dict) and self._frame_exists(frame)
+        ]
+        if len(frames) >= limit:
+            return self._sorted_frames(frames)[-limit:]
+
+        known = {str(frame.get("sequence")) for frame in frames if frame.get("sequence") is not None}
+        missing_segments = []
+        for segment in reversed(session.get("window_segments") or []):
+            if not isinstance(segment, dict):
+                continue
+            sequence = segment.get("sequence")
+            if sequence is None or str(sequence) in known:
+                continue
+            file_path = segment.get("file_path")
+            if not file_path:
+                continue
+            missing_segments.append(segment)
+            if len(missing_segments) >= max(1, min(limit, 4)):
+                break
+
+        for segment in reversed(missing_segments):
+            extracted = self._extract_evidence_frames(
+                session_id=session["session_id"],
+                file_path=Path(str(segment["file_path"])),
+                sequence=int(segment["sequence"]),
+                source_label=str(segment.get("source_label") or "Selected window"),
+                max_frames=1,
+            )
+            frames.extend(extracted)
+
+        return self._sorted_frames([frame for frame in frames if self._frame_exists(frame)])[-limit:]
+
+    @staticmethod
+    def _sorted_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            frames,
+            key=lambda frame: (
+                int(frame.get("sequence", 0)) if str(frame.get("sequence", "")).isdigit() else 0,
+                str(frame.get("path") or ""),
+            ),
+        )
+
+    @staticmethod
+    def _frame_exists(frame: dict[str, Any]) -> bool:
+        path = frame.get("path")
+        return isinstance(path, str) and Path(path).exists()
+
+    @staticmethod
+    def _ffmpeg_path() -> str | None:
+        try:
+            import imageio_ffmpeg
+
+            path = imageio_ffmpeg.get_ffmpeg_exe()
+            if path and Path(path).exists():
+                return str(path)
+        except Exception:
+            pass
+        return shutil.which("ffmpeg")
+
+    @staticmethod
+    def _safe_path_part(value: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
+        return cleaned.strip(".-") or "unknown"
+
+    @staticmethod
+    def _is_no_speech_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return any(marker in message for marker in NO_SPEECH_MARKERS)
+
+    @staticmethod
+    def _index_id_from_error(exc: Exception) -> str | None:
+        match = re.search(r"id\s+([a-f0-9]+)", str(exc), flags=re.IGNORECASE)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _scene_index_status(video: Any, scene_index_id: str | None) -> str | None:
+        if not scene_index_id or not hasattr(video, "list_scene_index"):
+            return None
+        try:
+            indexes = video.list_scene_index()
+        except Exception:
+            return None
+        if not isinstance(indexes, list):
+            return None
+        for item in indexes:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("scene_index_id") or item.get("id")) == scene_index_id:
+                status = item.get("status")
+                return str(status) if status is not None else None
+        return None
 
     def _get_rtstream(self, rtstream_id: str) -> Any:
         conn = self.conn()
@@ -502,7 +749,7 @@ class VideoDBService:
                         limit - len(shots),
                         scene_index_ids=[
                             str(index_id)
-                            for index_id in (item.get("visual_index_id"), item.get("audio_index_id"))
+                            for index_id in (item.get("visual_index_id"),)
                             if index_id
                         ],
                     )
@@ -602,7 +849,7 @@ class VideoDBService:
                     raise
                 last_error = exc
                 continue
-        if last_error:
+        if last_error and isinstance(last_error, TypeError):
             raise last_error
         return []
 

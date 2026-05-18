@@ -70,6 +70,16 @@ def context_markdown(payload: dict[str, Any]) -> str:
     else:
         lines.append("- No VideoDB semantic matches returned for this query.")
 
+    evidence = payload.get("evidence_frames") or []
+    if evidence:
+        lines.append("")
+        lines.append("## Visual Evidence Frames")
+        for item in evidence:
+            source = item.get("source_label") or "screen"
+            sequence = item.get("sequence")
+            path = item.get("path")
+            lines.append(f"- `{source}` segment `{sequence}`: {path}")
+
     recent = payload.get("recent_events") or []
     lines.append("")
     lines.append("## Recent Live Events")
@@ -118,6 +128,15 @@ def live_watch_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- `{source}` [{start} - {end}]: {text}")
     else:
         lines.append("- No semantic matches returned yet. Use live events below as primary evidence.")
+
+    evidence = payload.get("evidence_frames") or []
+    if evidence:
+        lines.extend(["", "## Visual Evidence Frames"])
+        for item in evidence:
+            source = item.get("source_label") or "screen"
+            sequence = item.get("sequence")
+            path = item.get("path")
+            lines.append(f"- `{source}` segment `{sequence}`: {path}")
 
     recent = payload.get("recent_events") or []
     lines.extend(["", "## Live Events Captured During Watch"])

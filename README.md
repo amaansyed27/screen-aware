@@ -45,7 +45,7 @@ npm run tauri:dev
 ```
 
 In the companion, choose Full screen or Window, choose Mic and optionally System sound, then press Start.
-Window capture uses the native OS picker and uploads searchable segments to VideoDB.
+Window capture uses the native OS picker, uploads searchable segments to VideoDB, and also extracts local evidence frames so MCP agents can see pixels immediately while VideoDB indexing catches up.
 During sharing, use the Pointer, Pen, and Highlighter controls in the floating toolbar to mark the screen. Annotation actions are recorded as live context for MCP agents.
 If you are not using mic, click the note button in the toolbar to send a typed context note to Codex. It is not a chat surface; Codex still replies in its own chat.
 
@@ -78,7 +78,7 @@ C:\Users\Amaan\Downloads\screen-aware\.venv\Scripts\python.exe -m screen_aware.m
 
 Tools:
 
-- `screen_aware_watch_live_issue`: keeps the MCP call open while you demonstrate a bug, then returns live visual/audio/annotation/note evidence. Use `diagnose` mode to ask before edits or `live_edit` mode to proceed into fixes.
+- `screen_aware_watch_live_issue`: keeps the MCP call open while you demonstrate a bug, then returns live visual/audio/annotation/note evidence plus image evidence frames for window captures. Use `diagnose` mode to ask before edits or `live_edit` mode to proceed into fixes.
 - `screen_aware_analyze_screen_context`: semantic visual/audio search plus recent live events.
 - `screen_aware_query_workflow_history`: semantic search over previous captured workflow context.
 - `screen_aware_get_live_context`: recent transcript, visual, audio, and lifecycle events without semantic search.
