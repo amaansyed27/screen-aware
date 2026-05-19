@@ -93,6 +93,8 @@ Resources:
 
 Use [docs/MCP_CLIENT_SETUP.md](docs/MCP_CLIENT_SETUP.md) for Codex, Claude Code, Gemini CLI, Google Antigravity, OpenCode, VS Code Copilot, Cline, and generic MCP clients.
 
+This repo also includes a direct Codex plugin at `plugins/screen-aware`, with a local marketplace entry at `.agents/plugins/marketplace.json`. The plugin points Codex at the same local stdio MCP server and uses `.env` for the VideoDB key.
+
 The safest shared environment block is:
 
 ```json

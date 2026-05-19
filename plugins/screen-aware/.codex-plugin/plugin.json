@@ -1,0 +1,45 @@
+{
+  "name": "screen-aware",
+  "version": "0.1.0",
+  "description": "Give Codex visual and audio context from local Screen-Aware desktop captures.",
+  "author": {
+    "name": "Amaan"
+  },
+  "homepage": "https://github.com/",
+  "repository": "https://github.com/",
+  "license": "MIT",
+  "keywords": [
+    "screen-aware",
+    "mcp",
+    "videodb",
+    "desktop-capture",
+    "debugging"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Screen-Aware",
+    "shortDescription": "Use live desktop context inside Codex",
+    "longDescription": "Screen-Aware connects Codex to the local Screen-Aware MCP server so agents can inspect live or historical desktop capture context, including visual evidence, transcripts, annotations, and capture status.",
+    "developerName": "Amaan",
+    "category": "Engineering",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://github.com/",
+    "privacyPolicyURL": "https://github.com/",
+    "termsOfServiceURL": "https://github.com/",
+    "defaultPrompt": [
+      "Use Screen-Aware live while I show a bug",
+      "Check my current capture status",
+      "Search my recent workflow context"
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "screenshots": [
+      "./assets/screenshot1.png"
+    ]
+  }
+}

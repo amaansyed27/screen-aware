@@ -21,6 +21,24 @@ Set `SCREEN_AWARE_AGENT_NAME` per client if you want the companion to show a fri
 
 ## OpenAI Codex
 
+### Direct Codex Plugin
+
+This repo includes a Codex plugin manifest at:
+
+```text
+C:\Users\Amaan\Downloads\screen-aware\plugins\screen-aware\.codex-plugin\plugin.json
+```
+
+The repo-local marketplace entry is:
+
+```text
+C:\Users\Amaan\Downloads\screen-aware\.agents\plugins\marketplace.json
+```
+
+The plugin registers the same local MCP server shown below, keeps `VIDEO_DB_API_KEY` in `.env`, and sets `SCREEN_AWARE_AGENT_NAME=Codex`.
+
+### Manual MCP Config
+
 CLI install:
 
 ```powershell

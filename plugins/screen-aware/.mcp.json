@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "screen-aware": {
+      "command": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "screen_aware.mcp_server"
+      ],
+      "cwd": "C:\\Users\\Amaan\\Downloads\\screen-aware",
+      "env": {
+        "SCREEN_AWARE_AGENT_NAME": "Codex",
+        "SCREEN_AWARE_DATA_DIR": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.screen-aware",
+        "SCREEN_AWARE_ENV_FILE": "C:\\Users\\Amaan\\Downloads\\screen-aware\\.env"
+      }
+    }
+  }
+}

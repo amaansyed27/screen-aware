@@ -1,0 +1,20 @@
+{
+  "name": "screen-aware-local",
+  "interface": {
+    "displayName": "Screen-Aware Local"
+  },
+  "plugins": [
+    {
+      "name": "screen-aware",
+      "source": {
+        "source": "local",
+        "path": "./plugins/screen-aware"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    }
+  ]
+}
